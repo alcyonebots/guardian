@@ -288,6 +288,11 @@ async def main() -> None:
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())  # Run the main function using asyncio.run()
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            logger.warning("Event loop is already running. Using asyncio.create_task() to run the bot.")
+            asyncio.create_task(main())  # Schedule the main function to run
+        else:
+            loop.run_until_complete(main())  # Run the main function
     except Exception as e:
         logger.error(f"Unhandled Exception: {e}")
