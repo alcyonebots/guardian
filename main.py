@@ -279,20 +279,16 @@ async def main() -> None:
 
     # Start the bot
     try:
-        await application.initialize()  # Ensure the application is initialized
+        await application.initialize()  # Await the application initialization
         await application.run_polling()  # Run the bot until the user presses Ctrl-C
     except Exception as e:
         logger.error(f"Error in running bot: {e}")
     finally:
-        await application.shutdown()  # Properly shut down the application
+        await application.shutdown()  # Await the application shutdown
 
 if __name__ == "__main__":
+    # Check if an event loop is already running
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            logger.warning("Event loop is already running. Using asyncio.create_task() to run the bot.")
-            asyncio.create_task(main())  # Schedule the main function to run
-        else:
-            loop.run_until_complete(main())  # Run the main function
-    except Exception as e:
-        logger.error(f"Unhandled Exception: {e}")
+        asyncio.get_event_loop().run_until_complete(main())
+    except RuntimeError:  # If there's an event loop already running
+        asyncio.run(main())
