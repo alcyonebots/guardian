@@ -1,7 +1,7 @@
+import asyncio
 import os
 import time
 import logging
-import asyncio
 from pymongo import MongoClient
 from telegram import Update, ChatMember, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -266,7 +266,7 @@ async def main() -> None:
     # Create the Application
     application = ApplicationBuilder().token(API_TOKEN).persistence(persistence).build()
 
-    # Add command handlers
+    # Add command handlers (assuming these are defined somewhere in your code)
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("features", features))
@@ -275,8 +275,6 @@ async def main() -> None:
     application.add_handler(CommandHandler("authusers", authusers))
     application.add_handler(CommandHandler("gauthusers", gauthusers))
     application.add_handler(CommandHandler("broadcast", broadcast))
-
-    # Add callback handler for help command buttons
     application.add_handler(CallbackQueryHandler(help_callback, pattern='help_back|edited_messages'))
 
     # Start the bot
@@ -289,8 +287,7 @@ async def main() -> None:
         await application.shutdown()  # Properly shut down the application
 
 if __name__ == "__main__":
-    # Ensure proper handling of the event loop
     try:
         asyncio.run(main())  # Run the main function using asyncio.run()
     except Exception as e:
-        logger.error(f"Unhandled Exception: {e}")  # Catch and log any unhandled exceptions
+        logger.error(f"Unhandled Exception: {e}")
