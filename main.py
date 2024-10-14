@@ -10,7 +10,7 @@ from telegram.ext import (
 )
 from dotenv import load_dotenv
 from telegram.constants import ParseMode
-
+from motor.motor_asyncio import AsyncIOMotorClient
 # Load environment variables
 load_dotenv()
 
