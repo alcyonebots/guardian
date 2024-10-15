@@ -2,7 +2,7 @@ import logging
 import os
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatMember, Chat
-from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackContext, CallbackQueryHandler, ChatMemberHandler, filters
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackContext, CallbackQueryHandler, ChatMemberHandler, filters
 from pymongo import MongoClient
 from telegram.error import TelegramError
 from datetime import timedelta
@@ -351,10 +351,11 @@ def error(update: Update, context: CallbackContext) -> None:
 def main() -> None:
     # Load token from environment variable
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-    global updater
-    updater = Updater(bot_token)
 
-    dp = updater.dispatcher
+    # Create an application instance
+    application = ApplicationBuilder().token(bot_token).build()
+
+    dp = application.dispatcher
 
     # Command handlers
     dp.add_handler(CommandHandler("start", start))
@@ -383,11 +384,8 @@ def main() -> None:
     # Log all errors
     dp.add_error_handler(error)
 
-    # Start the Bot
-    updater.start_polling()
-
-    # Run the bot until you press Ctrl-C
-    updater.idle()
+    # Start the Application
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
