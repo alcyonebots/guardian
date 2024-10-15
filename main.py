@@ -100,36 +100,3 @@ async def delete_edited_message(update: Update, context: ContextTypes.DEFAULT_TY
     if update.message.from_user.id not in await get_authorized_users(update.effective_chat.id):
         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
         await context.bot.send_message(chat_id=update.effective_chat.id, text=f"{update.message.from_user.mention_markdown_v2()} just edited a message and I deleted it.", parse_mode='MarkdownV2')
-
-# Function to get authorized users
-async def get_authorized_users(chat_id):
-    authorized_users = authorized_users_collection.find({"authorized": True})
-    return [user['user_id'] for user in authorized_users]
-
-# Function to get admin IDs
-async def get_admin_ids(update):
-    chat = await update.effective_chat.get_members()
-    return [member.user.id for member in chat if member.status in ['administrator', 'creator']]
-
-async def main():
-    application = ApplicationBuilder().token(os.getenv("BOT_TOKEN")).build()
-
-    # Register handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("auth", auth))
-    application.add_handler(CommandHandler("unauth", unauth))
-    application.add_handler(CommandHandler("gauth", gauth))
-    application.add_handler(CommandHandler("gunauth", gunauth))
-    application.add_handler(CommandHandler("authusers", authusers))
-    application.add_handler(CommandHandler("gauthusers", gauthusers))
-    application.add_handler(CommandHandler("stats", stats))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, delete_edited_message))
-
-    try:
-        # Start the bot
-        await application.run_polling()
-    except Exception as e:
-        logger.error(f"Error occurred: {e}")
-
-if __name__ == "__main__":
-    asyncio.run(main())
