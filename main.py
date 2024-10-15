@@ -370,8 +370,8 @@ def main() -> None:
     application.add_handler(CommandHandler("help", help_command))  # Add the help command
 
     # Updated message handlers with the correct filter syntax
-    application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.STICKER, handle_media))
-    application.add_handler(MessageHandler(filters.TEXT & filters.EDITED, edited_message))
+    application.add_handler(MessageHandler(filters.photo | filters.video | filters.sticker, handle_media))
+    application.add_handler(MessageHandler(filters.text & filters.edited, edited_message))
 
     # Chat member handler to track when the bot is added to a new chat
     application.add_handler(ChatMemberHandler(log_new_chat, pattern='new_chat_members'))
