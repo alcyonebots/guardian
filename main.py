@@ -147,7 +147,7 @@ async def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, delete_edited_message))
 
     # Media and sticker deletion handler
-    application.add_handler(MessageHandler(filters.Document | filters.Photo | filters.Sticker, delete_media))
+    application.add_handler(MessageHandler(filters.Document | filters.PHOTO | filters.Sticker, delete_media))
 
     try:
         # Start the bot
