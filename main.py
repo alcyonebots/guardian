@@ -355,34 +355,32 @@ def main() -> None:
     # Create an application instance
     application = ApplicationBuilder().token(bot_token).build()
 
-    dp = application.dispatcher
-
     # Command handlers
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("auth", auth))
-    dp.add_handler(CommandHandler("unauth", unauth))
-    dp.add_handler(CommandHandler("gauth", gauth))
-    dp.add_handler(CommandHandler("gunauth", gunauth))
-    dp.add_handler(CommandHandler("setdelay", set_delay))
-    dp.add_handler(CommandHandler("stats", stats))
-    dp.add_handler(CommandHandler("broadcast", broadcast))
-    dp.add_handler(CommandHandler("authusers", auth_users))
-    dp.add_handler(CommandHandler("gauthusers", gauth_users))
-    dp.add_handler(CommandHandler("features", features))  # Add the features command
-    dp.add_handler(CommandHandler("help", help_command))  # Add the help command
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("auth", auth))
+    application.add_handler(CommandHandler("unauth", unauth))
+    application.add_handler(CommandHandler("gauth", gauth))
+    application.add_handler(CommandHandler("gunauth", gunauth))
+    application.add_handler(CommandHandler("setdelay", set_delay))
+    application.add_handler(CommandHandler("stats", stats))
+    application.add_handler(CommandHandler("broadcast", broadcast))
+    application.add_handler(CommandHandler("authusers", auth_users))
+    application.add_handler(CommandHandler("gauthusers", gauth_users))
+    application.add_handler(CommandHandler("features", features))  # Add the features command
+    application.add_handler(CommandHandler("help", help_command))  # Add the help command
 
     # Message handler for media (photos, videos, stickers)
-    dp.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.STICKER, handle_media))
-    dp.add_handler(MessageHandler(filters.TEXT & filters.EDITED, edited_message))
+    application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.STICKER, handle_media))
+    application.add_handler(MessageHandler(filters.TEXT & filters.EDITED, edited_message))
 
     # Chat member handler to track when the bot is added to a new chat
-    dp.add_handler(ChatMemberHandler(log_new_chat, pattern='new_chat_members'))
+    application.add_handler(ChatMemberHandler(log_new_chat, pattern='new_chat_members'))
 
     # Callback query handler for inline buttons
-    dp.add_handler(CallbackQueryHandler(button))
+    application.add_handler(CallbackQueryHandler(button))
 
     # Log all errors
-    dp.add_error_handler(error)
+    application.add_error_handler(error)
 
     # Start the Application
     application.run_polling()
