@@ -131,19 +131,11 @@ async def get_admin_ids(update):
     chat = await update.effective_chat.get_members()
     return [member.user.id for member in chat if member.status in ['administrator', 'creator']]
 
-# Function to log new chats and user starts
-async def log_new_chat(chat_id):
-    await context.bot.send_message(chat_id=LOG_GROUP_CHAT_ID, text=f"Bot added to a new chat: {chat_id}")
-
-async def log_user_start(user_id):
-    await context.bot.send_message(chat_id=LOG_GROUP_CHAT_ID, text=f"User started the bot: {user_id}")
-
 async def main():
     application = ApplicationBuilder().token(os.getenv("BOT_TOKEN")).build()
 
     # Register handlers
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_chat_member))
     application.add_handler(CommandHandler("setdelay", setdelay))
     application.add_handler(CommandHandler("auth", auth))
     application.add_handler(CommandHandler("unauth", unauth))
@@ -155,7 +147,7 @@ async def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, delete_edited_message))
 
     # Media and sticker deletion handler
-    application.add_handler(MessageHandler(filters.Document | filters.PHOTO | filters.Sticker, delete_media))
+    application.add_handler(MessageHandler(filters.Document | filters.Photo | filters.Sticker, delete_media))
 
     try:
         # Start the bot
