@@ -27,24 +27,10 @@ chat_collection = db['chats']
 # Constants
 BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID"))
 LOG_GROUP_CHAT_ID = int(os.getenv("LOG_GROUP_CHAT_ID"))
-DEFAULT_MEDIA_DELAY = 1800  # 30 minutes
-chat_media_delay = {}
 
 # Command to start the bot
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Welcome! I'm a bot that manages message edits and media in this group.")
-
-# Command to set delay for media deletion
-async def setdelay(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.id in await get_admin_ids(update):
-        if context.args:
-            delay = int(context.args[0])
-            chat_media_delay[update.effective_chat.id] = delay
-            await update.message.reply_text(f"Media deletion delay set to {delay} seconds.")
-        else:
-            await update.message.reply_text("Please specify the delay in seconds.")
-    else:
-        await update.message.reply_text("You are not authorized to use this command.")
+    await update.message.reply_text("Welcome! I'm a bot that manages message edits in this group.")
 
 # Command to authorize users
 async def auth(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -115,12 +101,6 @@ async def delete_edited_message(update: Update, context: ContextTypes.DEFAULT_TY
         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
         await context.bot.send_message(chat_id=update.effective_chat.id, text=f"{update.message.from_user.mention_markdown_v2()} just edited a message and I deleted it.", parse_mode='MarkdownV2')
 
-# Handle media and sticker deletion
-async def delete_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    delay = chat_media_delay.get(update.effective_chat.id, DEFAULT_MEDIA_DELAY)
-    await asyncio.sleep(delay)
-    await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
-
 # Function to get authorized users
 async def get_authorized_users(chat_id):
     authorized_users = authorized_users_collection.find({"authorized": True})
@@ -136,7 +116,6 @@ async def main():
 
     # Register handlers
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("setdelay", setdelay))
     application.add_handler(CommandHandler("auth", auth))
     application.add_handler(CommandHandler("unauth", unauth))
     application.add_handler(CommandHandler("gauth", gauth))
@@ -145,9 +124,6 @@ async def main():
     application.add_handler(CommandHandler("gauthusers", gauthusers))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, delete_edited_message))
-
-    # Updated media and sticker deletion handler
-    application.add_handler(MessageHandler(filters.Document | filters.Sticker | filters.PHOTO, delete_media))
 
     try:
         # Start the bot
