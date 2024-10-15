@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # MongoDB setup
 MONGODB_URI = os.getenv("MONGODB_URI")
 client = MongoClient(MONGODB_URI)
-db = client["telegram"]  # Change to your database name
+db = client["your_database_name"]  # Change to your database name
 authorized_users_collection = db["authorized_users"]
 exempted_users_collection = db["exempted_users"]  # Collection for exempted users
 user_interaction_collection = db["user_interactions"]  # Collection for user interactions
@@ -232,11 +232,6 @@ async def delete_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.document or update.message.photo or update.message.sticker:
         await update.message.delete()
         # Removed notification message for media/sticker deletion
-        # await context.bot.send_message(
-        #     chat_id=chat.id,
-        #     text=f"{user.mention} sent media/sticker, and I deleted it.",
-        #     parse_mode='HTML'
-        # )
 
 def get_user_id(context, identifier):
     """Helper function to get user ID from username or ID."""
