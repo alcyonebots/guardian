@@ -1,8 +1,8 @@
 import logging
 import os
 from dotenv import load_dotenv
-from telegram import ApplicationBuilder, InlineKeyboardButton, InlineKeyboardMarkup, ChatMember, Chat
-from telegram.ext import Updater, CommandHandler, MessageHandler, filters, CallbackContext, CallbackQueryHandler, ChatMemberHandler
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatMember, Chat
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackContext, CallbackQueryHandler, ChatMemberHandler
 from pymongo import MongoClient
 from telegram.error import TelegramError
 from datetime import timedelta
