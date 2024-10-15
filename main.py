@@ -1,193 +1,117 @@
-import logging
 import os
 import asyncio
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+import logging
 from pymongo import MongoClient
 from dotenv import load_dotenv
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
-# Load environment variables from .env file
+# Load environment variables
 load_dotenv()
 
-# Set up logging
+# Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
-
 logger = logging.getLogger(__name__)
 
-# MongoDB setup
-MONGODB_URI = os.getenv("MONGODB_URI")
-client = MongoClient(MONGODB_URI)
-db = client["your_database_name"]  # Change to your database name
-authorized_users_collection = db["authorized_users"]
-exempted_users_collection = db["exempted_users"]  # Collection for exempted users
-user_interaction_collection = db["user_interactions"]  # Collection for user interactions
-chat_collection = db["chat_ids"]  # Collection for chat IDs
+# MongoDB connection
+mongo_client = MongoClient(os.getenv("MONGODB_URI"))
+db = mongo_client['telegram_bot']
+authorized_users_collection = db['authorized_users']
+exempted_users_collection = db['exempted_users']
+user_interaction_collection = db['user_interactions']
+chat_collection = db['chats']
 
-# Replace with the bot owner's user ID and log group chat ID
+# Constants
 BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID"))
-LOG_GROUP_CHAT_ID = int(os.getenv("LOG_GROUP_CHAT_ID"))  # New log group chat ID
-
-# Default delay time for media and stickers (in seconds)
-DEFAULT_MEDIA_DELAY = 30 * 60  # 30 minutes
-
-# Store delay time per chat
+LOG_GROUP_CHAT_ID = int(os.getenv("LOG_GROUP_CHAT_ID"))
+DEFAULT_MEDIA_DELAY = 1800  # 30 minutes
 chat_media_delay = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hello! I will delete edited messages from non-authorized users and media/stickers after a set time.")
-
-    # Log to the log group when a user starts a conversation in PM
-    if update.message.chat.type == 'private':  # Check if it's a private message
-        await context.bot.send_message(
-            chat_id=LOG_GROUP_CHAT_ID,
-            text=f"User {update.message.from_user.mention} started a conversation in PM.",
-            parse_mode='HTML'
-        )
-
-    # Record user interaction
-    user_interaction_collection.update_one({"user_id": update.message.from_user.id}, {"$set": {"user_id": update.message.from_user.id}}, upsert=True)
-    # Record chat interaction
-    chat_collection.update_one({"chat_id": update.message.chat.id}, {"$set": {"chat_id": update.message.chat.id}}, upsert=True)
+    logger.info("Start command received from user: %s", update.message.from_user.id)
+    await update.message.reply_text("Hello! I'm your bot.")
 
 async def new_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Log when the bot is added to a new chat
-    for member in update.message.new_chat_members:
-        if member.id == context.bot.id:  # Check if the bot is the one being added
-            await context.bot.send_message(
-                chat_id=LOG_GROUP_CHAT_ID,
-                text=f"The bot has been added to a new chat: {update.message.chat.title}.",
-                parse_mode='HTML'
-            )
-            break
+    logger.info("Bot added to new chat: %s", update.message.chat.title)
+    await context.bot.send_message(
+        chat_id=LOG_GROUP_CHAT_ID,
+        text=f"Bot added to chat: {update.message.chat.title} (ID: {update.message.chat.id})"
+    )
 
 async def setdelay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
-    chat = update.message.chat
-
-    # Check if the user is an admin
-    if user.id in [admin.user.id for admin in await chat.get_administrators()]:
-        if context.args:
-            try:
-                delay = int(context.args[0])
-                chat_media_delay[chat.id] = delay  # Set the delay for this chat
-                await update.message.reply_text(f"Media and sticker deletion delay set to {delay} seconds for this chat.")
-            except ValueError:
-                await update.message.reply_text("Please provide a valid number.")
-        else:
-            await update.message.reply_text("Please provide the delay time in seconds.")
+    if user.id in authorized_users_collection.find():
+        delay = int(context.args[0]) if context.args else DEFAULT_MEDIA_DELAY
+        chat_media_delay[update.message.chat.id] = delay
+        await update.message.reply_text(f"Media/sticker deletion delay set to {delay} seconds.")
     else:
-        await update.message.reply_text("Only admins can set the delay.")
+        await update.message.reply_text("You are not authorized to set delays.")
 
 async def auth(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
-    chat = update.message.chat
+    target_user_id = get_user_id(context, context.args[0]) if context.args else user.id
+    logger.info("Auth command by user %s for user %s", user.id, target_user_id)
 
-    # Check if the user is an admin
-    if user.id in [admin.user.id for admin in await chat.get_administrators()]:
-        if context.args:
-            user_id = get_user_id(context, context.args[0])
-            # Add user to authorized users in MongoDB
-            authorized_users_collection.update_one({"user_id": user_id}, {"$set": {"user_id": user_id}}, upsert=True)
-            await update.message.reply_text(f"User {user_id} has been authorized to edit messages.")
-        elif update.message.reply_to_message:
-            user_id = update.message.reply_to_message.from_user.id
-            authorized_users_collection.update_one({"user_id": user_id}, {"$set": {"user_id": user_id}}, upsert=True)
-            await update.message.reply_text(f"User {user_id} has been authorized to edit messages.")
-        else:
-            await update.message.reply_text("Please provide a user ID or reply to a user.")
+    if user.id in authorized_users_collection.find():
+        authorized_users_collection.insert_one({"user_id": target_user_id})
+        await update.message.reply_text(f"User {target_user_id} has been authorized.")
+    else:
+        await update.message.reply_text("You are not authorized to perform this action.")
 
 async def unauth(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
-    chat = update.message.chat
+    target_user_id = get_user_id(context, context.args[0]) if context.args else user.id
+    logger.info("Unauth command by user %s for user %s", user.id, target_user_id)
 
-    # Check if the user is an admin
-    if user.id in [admin.user.id for admin in await chat.get_administrators()]:
-        if context.args:
-            user_id = get_user_id(context, context.args[0])
-            # Remove user from authorized users in MongoDB
-            result = authorized_users_collection.delete_one({"user_id": user_id})
-            if result.deleted_count > 0:
-                await update.message.reply_text(f"User {user_id} has been unauthorized.")
-            else:
-                await update.message.reply_text(f"User {user_id} is not authorized.")
-        elif update.message.reply_to_message:
-            user_id = update.message.reply_to_message.from_user.id
-            result = authorized_users_collection.delete_one({"user_id": user_id})
-            if result.deleted_count > 0:
-                await update.message.reply_text(f"User {user_id} has been unauthorized.")
-            else:
-                await update.message.reply_text(f"User {user_id} is not authorized.")
-        else:
-            await update.message.reply_text("Please provide a user ID or reply to a user.")
+    if user.id in authorized_users_collection.find():
+        authorized_users_collection.delete_one({"user_id": target_user_id})
+        await update.message.reply_text(f"User {target_user_id} has been unauthorised.")
     else:
-        await update.message.reply_text("Only admins can unauthorize users.")
+        await update.message.reply_text("You are not authorized to perform this action.")
 
 async def gauth(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
+    target_user_id = get_user_id(context, context.args[0]) if context.args else user.id
+    logger.info("Gauth command by bot owner %s for user %s", user.id, target_user_id)
 
-    # Check if the user is the bot owner
     if user.id == BOT_OWNER_ID:
-        if context.args:
-            user_id = get_user_id(context, context.args[0])
-            # Add user to exempted users in MongoDB
-            exempted_users_collection.update_one({"user_id": user_id}, {"$set": {"user_id": user_id}}, upsert=True)
-            await update.message.reply_text(f"User {user_id} has been exempted from editing restrictions.")
-        elif update.message.reply_to_message:
-            user_id = update.message.reply_to_message.from_user.id
-            exempted_users_collection.update_one({"user_id": user_id}, {"$set": {"user_id": user_id}}, upsert=True)
-            await update.message.reply_text(f"User {user_id} has been exempted from editing restrictions.")
-        else:
-            await update.message.reply_text("Please provide a user ID or reply to a user.")
+        exempted_users_collection.insert_one({"user_id": target_user_id})
+        await update.message.reply_text(f"User {target_user_id} has been globally authorized.")
     else:
-        await update.message.reply_text("Only the bot owner can exempt users.")
+        await update.message.reply_text("Only the bot owner can perform this action.")
 
 async def gunauth(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
+    target_user_id = get_user_id(context, context.args[0]) if context.args else user.id
+    logger.info("Gunauth command by bot owner %s for user %s", user.id, target_user_id)
 
-    # Check if the user is the bot owner
     if user.id == BOT_OWNER_ID:
-        if context.args:
-            user_id = get_user_id(context, context.args[0])
-            # Remove user from exempted users in MongoDB
-            result = exempted_users_collection.delete_one({"user_id": user_id})
-            if result.deleted_count > 0:
-                await update.message.reply_text(f"User {user_id} has been unexempted from editing restrictions.")
-            else:
-                await update.message.reply_text(f"User {user_id} is not exempted.")
-        elif update.message.reply_to_message:
-            user_id = update.message.reply_to_message.from_user.id
-            result = exempted_users_collection.delete_one({"user_id": user_id})
-            if result.deleted_count > 0:
-                await update.message.reply_text(f"User {user_id} has been unexempted from editing restrictions.")
-            else:
-                await update.message.reply_text(f"User {user_id} is not exempted.")
-        else:
-            await update.message.reply_text("Please provide a user ID or reply to a user.")
+        exempted_users_collection.delete_one({"user_id": target_user_id})
+        await update.message.reply_text(f"User {target_user_id} has been globally unauthorised.")
     else:
-        await update.message.reply_text("Only the bot owner can unexempt users.")
+        await update.message.reply_text("Only the bot owner can perform this action.")
 
 async def authusers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
-    chat = update.message.chat
+    logger.info("Authusers command by user %s", user.id)
 
-    # Check if the user is an admin
-    if user.id in [admin.user.id for admin in await chat.get_administrators()]:
-        exempted_users = exempted_users_collection.find()
+    if user.id in authorized_users_collection.find():
+        exempted_users = authorized_users_collection.find({"chat_id": update.message.chat.id})
         if exempted_users.count() == 0:
             await update.message.reply_text("No exempted users in this chat.")
         else:
             response = "Exempted users:\n" + "\n".join([f"{i+1}- {u['user_id']}" for i, u in enumerate(exempted_users)])
             await update.message.reply_text(response)
     else:
-        await update.message.reply_text("Only admins can view exempted users.")
+        await update.message.reply_text("You are not authorized to view exempted users.")
 
 async def gauthusers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
+    logger.info("Gauthusers command by bot owner %s", user.id)
 
-    # Check if the user is the bot owner
     if user.id == BOT_OWNER_ID:
         exempted_users = exempted_users_collection.find()
         if exempted_users.count() == 0:
@@ -258,8 +182,8 @@ async def main():
 
     # Register handlers
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_chat_member))  # New handler for new chat members
-    application.add_handler(CommandHandler("setdelay", setdelay))  # New command for setting media/sticker deletion delay
+    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_chat_member))
+    application.add_handler(CommandHandler("setdelay", setdelay))
     application.add_handler(CommandHandler("auth", auth))
     application.add_handler(CommandHandler("unauth", unauth))
     application.add_handler(CommandHandler("gauth", gauth))
@@ -268,8 +192,13 @@ async def main():
     application.add_handler(CommandHandler("gauthusers", gauthusers))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, delete_edited_message))
-    application.add_handler(MessageHandler(filters.Document | filters.PHOTO() | filters.Sticker(), delete_media))  # Corrected handler for media/sticker deletion
+    application.add_handler(MessageHandler(filters.Document | filters.PHOTO() | filters.Sticker(), delete_media))  # Updated handler for media/sticker deletion
 
-    # Start the bot
-    await application.run_polling()
-    
+    try:
+        # Start the bot
+        await application.run_polling()
+    except Exception as e:
+        logger.error(f"Error occurred: {e}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
