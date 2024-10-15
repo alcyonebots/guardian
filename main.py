@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatMember, Chat
 from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackContext, CallbackQueryHandler, ChatMemberHandler
-from telegram.ext.filters import Filters
+from telegram import filters
 from pymongo import MongoClient
 from telegram.error import TelegramError
 from datetime import timedelta
@@ -372,8 +372,8 @@ def main() -> None:
     dp.add_handler(CommandHandler("help", help_command))  # Add the help command
 
     # Message handler for media (photos, videos, stickers)
-    dp.add_handler(MessageHandler(Filters.photo | Filters.video | Filters.sticker, handle_media))
-    dp.add_handler(MessageHandler(Filters.text & Filters.edited, edited_message))
+    dp.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.STICKER, handle_media))
+    dp.add_handler(MessageHandler(filters.TEXT & filters.EDITED, edited_message))
 
     # Chat member handler to track when the bot is added to a new chat
     dp.add_handler(ChatMemberHandler(log_new_chat, pattern='new_chat_members'))
