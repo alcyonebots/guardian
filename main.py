@@ -268,10 +268,8 @@ async def main():
     application.add_handler(CommandHandler("gauthusers", gauthusers))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, delete_edited_message))
-    application.add_handler(MessageHandler(filters.Document | filters.PHOTO | filters.Sticker, delete_media))  # New handler for media/sticker deletion
+    application.add_handler(MessageHandler(filters.Document | filters.PHOTO() | filters.Sticker(), delete_media))  # Corrected handler for media/sticker deletion
 
     # Start the bot
     await application.run_polling()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    
