@@ -369,7 +369,7 @@ def main() -> None:
     application.add_handler(CommandHandler("features", features))  # Add the features command
     application.add_handler(CommandHandler("help", help_command))  # Add the help command
 
-    # Message handlers
+    # Updated message handlers with the correct filter syntax
     application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.STICKER, handle_media))
     application.add_handler(MessageHandler(filters.TEXT & filters.EDITED, edited_message))
 
