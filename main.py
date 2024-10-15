@@ -106,6 +106,7 @@ def globally_authorize_user(user_id):
 def globally_unauthorize_user(user_id):
     globally_authorized_users_col.delete_one({'user_id': user_id})
 
+
 # Handle edited messages and apply restrictions
 def edited_message(update: Update, context: CallbackContext) -> None:
     if update.edited_message:
@@ -371,7 +372,7 @@ def main() -> None:
 
     # Message handler for media (photos, videos, stickers)
     application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.AUDIO | filters.Sticker.ALL, handle_media))
-    application.add_handler(MessageHandler(filters.TEXT & filters.EDITED, edited_message))
+    application.add_handler(MessageHandler(filters.TEXT, edited_message))
 
     # Chat member handler to track when the bot is added to a new chat
     application.add_handler(ChatMemberHandler(log_new_chat, pattern='new_chat_members'))
