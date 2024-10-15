@@ -375,7 +375,7 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.TEXT, edited_message))
 
     # Chat member handler to track when the bot is added to a new chat
-    application.add_handler(ChatMemberHandler(log_new_chat, pattern='new_chat_members'))
+    application.add_handler(ChatMemberHandler(log_new_chat))  # Removed the pattern argument
 
     # Callback query handler for inline buttons
     application.add_handler(CallbackQueryHandler(button))
@@ -385,6 +385,3 @@ def main() -> None:
 
     # Start the Application
     application.run_polling()
-
-if __name__ == '__main__':
-    main()
