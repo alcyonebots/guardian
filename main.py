@@ -177,6 +177,9 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("Only the bot owner can view stats.")
 
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+
 async def main():
     application = ApplicationBuilder().token(os.getenv("BOT_TOKEN")).build()
 
@@ -192,7 +195,7 @@ async def main():
     application.add_handler(CommandHandler("gauthusers", gauthusers))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, delete_edited_message))
-    
+
     # Corrected handler for media/sticker deletion
     application.add_handler(MessageHandler(filters.Document | filters.PHOTO | filters.Sticker, delete_media))
 
