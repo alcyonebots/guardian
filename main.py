@@ -192,7 +192,9 @@ async def main():
     application.add_handler(CommandHandler("gauthusers", gauthusers))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, delete_edited_message))
-    application.add_handler(MessageHandler(filters.Document | filters.PHOTO() | filters.Sticker(), delete_media))  # Updated handler for media/sticker deletion
+    
+    # Corrected handler for media/sticker deletion
+    application.add_handler(MessageHandler(filters.Document | filters.PHOTO | filters.Sticker, delete_media))
 
     try:
         # Start the bot
