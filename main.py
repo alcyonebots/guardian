@@ -1,8 +1,9 @@
 import os
 import threading
 from datetime import datetime
-from telegram import Update, Bot, ParseMode
+from telegram import Update, Bot
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram.constants import ParseMode
 from pymongo import MongoClient
 from dotenv import load_dotenv
 
