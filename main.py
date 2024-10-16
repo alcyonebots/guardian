@@ -1,10 +1,8 @@
 import os
 import threading
 from datetime import datetime
-from telegram import Update, Bot
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackContext
-from telegram.ext import filters
-from telegram.constants import ParseMode
+from telegram import Update, Bot, ParseMode
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 from pymongo import MongoClient
 from dotenv import load_dotenv
 
@@ -318,33 +316,35 @@ def bot_added_to_chat(update: Update, context: CallbackContext):
 
     log_new_chat(context, chat_id, chat_title, chat_username)
 
-    context.bot.send_message(chat_id=chat_id, text="Hello! I'm your group gaurdian bot. Use /help to see what I can do!")
+    context.bot.send_message(chat_id=chat_id, text="Hello! I'm your group management bot. Use /help to see what I can do!")
 
 # Main function to start the bot
 def main():
-    application = Application.builder().token(BOT_TOKEN).build()
+    updater = Updater(BOT_TOKEN, use_context=True)
+    dp = updater.dispatcher
 
     # Add handlers for commands
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("auth", auth))
-    application.add_handler(CommandHandler("unauth", unauth))
-    application.add_handler(CommandHandler("gauth", gauth))
-    application.add_handler(CommandHandler("ungauth", ungauth))
-    application.add_handler(CommandHandler("setdelay", set_delay))
-    application.add_handler(CommandHandler("broadcast", broadcast))
-    application.add_handler(CommandHandler("stats", stats))
-    application.add_handler(CommandHandler("authusers", authusers))
-    application.add_handler(CommandHandler("gauthusers", gauthusers))
-    application.add_handler(CommandHandler("features", features))
-    application.add_handler(CommandHandler("help", help_command))
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("auth", auth))
+    dp.add_handler(CommandHandler("unauth", unauth))
+    dp.add_handler(CommandHandler("gauth", gauth))
+    dp.add_handler(CommandHandler("ungauth", ungauth))
+    dp.add_handler(CommandHandler("setdelay", set_delay))
+    dp.add_handler(CommandHandler("broadcast", broadcast))
+    dp.add_handler(CommandHandler("stats", stats))
+    dp.add_handler(CommandHandler("authusers", authusers))
+    dp.add_handler(CommandHandler("gauthusers", gauthusers))
+    dp.add_handler(CommandHandler("features", features))
+    dp.add_handler(CommandHandler("help", help_command))
 
     # Add handlers for messages and chat events
-    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, bot_added_to_chat))
-    application.add_handler(MessageHandler(filters.EditedMessage, delete_edited_messages))
-    application.add_handler(MessageHandler(filters.Media, media_handler))
+    dp.add_handler(MessageHandler(Filters.status_update.new_chat_members, bot_added_to_chat))
+    dp.add_handler(MessageHandler(Filters.edited_message, delete_edited_messages))
+    dp.add_handler(MessageHandler(Filters.media, media_handler))
 
     # Start polling for updates
-    application.run_polling()  # Use run_polling instead of start_polling
+    updater.start_polling()
+    updater.idle()
 
 if __name__ == '__main__':
     main()
