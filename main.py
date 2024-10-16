@@ -322,7 +322,7 @@ def bot_added_to_chat(update: Update, context: CallbackContext):
 
 # Main function to start the bot
 def main():
-    updater = Updater(BOT_TOKEN, use_context=True)
+    updater = Updater(BOT_TOKEN)
     dp = updater.dispatcher
 
     # Add handlers for commands
@@ -340,9 +340,9 @@ def main():
     dp.add_handler(CommandHandler("help", help_command))
 
     # Add handlers for messages and chat events
-    dp.add_handler(MessageHandler(filters.status_update.new_chat_members, bot_added_to_chat))
+    dp.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, bot_added_to_chat))
     dp.add_handler(MessageHandler(filters.Edited_message, delete_edited_messages))
-    dp.add_handler(MessageHandler(filters.media, media_handler))
+    dp.add_handler(MessageHandler(filters.Media, media_handler))
 
     # Start polling for updates
     updater.start_polling()
