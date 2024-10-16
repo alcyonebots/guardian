@@ -2,7 +2,8 @@ import os
 import threading
 from datetime import datetime
 from telegram import Update, Bot
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackContext
+from telegram.ext import filters
 from telegram.constants import ParseMode
 from pymongo import MongoClient
 from dotenv import load_dotenv
@@ -339,9 +340,9 @@ def main():
     dp.add_handler(CommandHandler("help", help_command))
 
     # Add handlers for messages and chat events
-    dp.add_handler(MessageHandler(Filters.status_update.new_chat_members, bot_added_to_chat))
-    dp.add_handler(MessageHandler(Filters.edited_message, delete_edited_messages))
-    dp.add_handler(MessageHandler(Filters.media, media_handler))
+    dp.add_handler(MessageHandler(filters.status_update.new_chat_members, bot_added_to_chat))
+    dp.add_handler(MessageHandler(filters.Edited_message, delete_edited_messages))
+    dp.add_handler(MessageHandler(filters.media, media_handler))
 
     # Start polling for updates
     updater.start_polling()
