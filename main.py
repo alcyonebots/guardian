@@ -2,7 +2,7 @@ import os
 import threading
 from datetime import datetime
 from telegram import Update, Bot
-from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackContext
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackContext
 from telegram.ext import filters
 from telegram.constants import ParseMode
 from pymongo import MongoClient
@@ -322,8 +322,7 @@ def bot_added_to_chat(update: Update, context: CallbackContext):
 
 # Main function to start the bot
 def main():
-    updater = Updater(BOT_TOKEN)
-    dp = updater.dispatcher
+    application = Application.builder().token(BOT_TOKEN).build()
 
     # Add handlers for commands
     dp.add_handler(CommandHandler("start", start))
@@ -340,13 +339,12 @@ def main():
     dp.add_handler(CommandHandler("help", help_command))
 
     # Add handlers for messages and chat events
-    dp.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, bot_added_to_chat))
-    dp.add_handler(MessageHandler(filters.Edited_message, delete_edited_messages))
-    dp.add_handler(MessageHandler(filters.Media, media_handler))
+    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, bot_added_to_chat))
+    application.add_handler(MessageHandler(filters.EditedMessage, delete_edited_messages))
+    application.add_handler(MessageHandler(filters.Media, media_handler))
 
     # Start polling for updates
-    updater.start_polling()
-    updater.idle()
+    application.run_polling()  # Use run_polling instead of start_polling
 
 if __name__ == '__main__':
     main()
