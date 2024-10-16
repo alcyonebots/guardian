@@ -10,11 +10,9 @@ from dotenv import load_dotenv
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID"))
-MONGODB_URI = os.getenv("MONGODB_URI")
-LOG_GROUP_CHAT_ID = os.getenv("LOG_GROUP_CHAT_ID")
 
 # MongoDB setup
-client = MongoClient(MONGODB_URI)
+client = MongoClient("mongodb://localhost:27017/")
 db = client['telegram_bot']
 users_collection = db['users']
 groups_collection = db['groups']
@@ -41,14 +39,6 @@ def get_user_id_by_username(username, context):
     username = username.lstrip('@')  # Remove '@' if present
     user = context.bot.get_chat(username)
     return user.id if user else None
-
-# Log to the log group chat
-def log_to_chat(log_message):
-    try:
-        bot = Bot(token=BOT_TOKEN)
-        bot.send_message(chat_id=LOG_GROUP_CHAT_ID, text=log_message)
-    except Exception as e:
-        print(f"Error logging to chat: {e}")
 
 # Authorize a user in a specific group
 def auth(update: Update, context: CallbackContext):
@@ -141,7 +131,6 @@ def ungauth(update: Update, context: CallbackContext):
 
 # Log when the bot is added to a new chat
 def log_new_chat(context: CallbackContext, chat_id, chat_title=None, chat_username=None):
-    log_message = f"Bot added to new chat:\nChat ID: {chat_id}\nChat Title: {chat_title or 'N/A'}\nChat Username: {chat_username or 'N/A'}"
     log_collection.insert_one({
         "event": "bot_added_to_chat",
         "chat_id": chat_id,
@@ -149,18 +138,15 @@ def log_new_chat(context: CallbackContext, chat_id, chat_title=None, chat_userna
         "chat_username": chat_username,
         "timestamp": datetime.utcnow()
     })
-    log_to_chat(log_message)  # Log to the log group chat
 
 # Log when a user starts the bot
 def log_new_user_start(context: CallbackContext, user_id, username=None):
-    log_message = f"User started the bot:\nUser ID: {user_id}\nUsername: {username or 'Unknown'}"
     log_collection.insert_one({
         "event": "bot_started_by_user",
         "user_id": user_id,
         "username": username or "Unknown",
         "timestamp": datetime.utcnow()
     })
-    log_to_chat(log_message)  # Log to the log group chat
 
 # /start command handler
 def start(update: Update, context: CallbackContext):
@@ -186,8 +172,8 @@ def schedule_media_deletion(bot: Bot, chat_id, message_id, delay):
     def delete_media():
         try:
             bot.delete_message(chat_id=chat_id, message_id=message_id)
-        except Exception as e:
-            print(f"Error deleting media: {e}")  # Log any errors
+        except:
+            pass  # In case the message is already deleted or doesn't exist
 
     # Start a timer that will delete the media after the specified delay (in minutes)
     threading.Timer(delay * 60, delete_media).start()
@@ -200,20 +186,25 @@ def media_handler(update: Update, context: CallbackContext):
     delay = group.get("delete_delay", 30)  # Default delay: 30 minutes
     schedule_media_deletion(context.bot, chat_id, message_id, delay)
 
-# Function to delete edited messages
+# Deleting edited messages from non-admins and notifying the group
 def delete_edited_messages(update: Update, context: CallbackContext):
-    chat_id = update.message.chat_id
-    user_id = update.message.from_user.id
+    edited_message = update.edited_message
+    user_id = edited_message.from_user.id
+    chat_id = edited_message.chat_id
+    user_mention = edited_message.from_user.mention_html()
 
-    if is_authorized(chat_id, user_id):
-        return  # If the user is authorized, do nothing
+    if not is_admin(chat_id, user_id) and not is_globally_authorized(user_id) and not is_authorized(chat_id, user_id):
+        # Delete the edited message
+        context.bot.delete_message(chat_id=chat_id, message_id=edited_message.message_id)
+        
+        # Send a notification message to the group
+        context.bot.send_message(
+            chat_id=chat_id,
+            text=f"{user_mention} just edited a message and I deleted it.",
+            parse_mode=ParseMode.HTML
+        )
 
-    # Log message deletion and notify group
-    context.bot.delete_message(chat_id=chat_id, message_id=update.message.message_id)
-    user_mention = f"<a href='tg://user?id={user_id}'>{update.message.from_user.first_name}</a>"
-    context.bot.send_message(chat_id=chat_id, text=f"{user_mention} just edited a message and I deleted it.", parse_mode=ParseMode.HTML)
-
-# Broadcast messages to all groups (owner only)
+# Broadcast message to all groups (owner only)
 def broadcast(update: Update, context: CallbackContext):
     if update.message.from_user.id == BOT_OWNER_ID:
         message = ' '.join(context.args)
@@ -337,12 +328,10 @@ def main():
     dp.add_handler(CommandHandler("features", features))
     dp.add_handler(CommandHandler("help", help_command))
 
-    # Register media handler (photos, videos, documents, stickers, etc.)
-    media_filter = Filters.photo | Filters.video | Filters.document | Filters.audio | Filters.sticker
-    dp.add_handler(MessageHandler(media_filter, media_handler))
     # Add handlers for messages and chat events
     dp.add_handler(MessageHandler(Filters.status_update.new_chat_members, bot_added_to_chat))
-    dp.add_handler(MessageHandler(Filters.update.edited_message, delete_edited_messages))
+    dp.add_handler(MessageHandler(Filters.edited_message, delete_edited_messages))
+    dp.add_handler(MessageHandler(Filters.media, media_handler))
 
     # Start polling for updates
     updater.start_polling()
