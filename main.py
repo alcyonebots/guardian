@@ -339,7 +339,7 @@ def main():
 
     # Add handlers for messages and chat events
     dp.add_handler(MessageHandler(Filters.status_update.new_chat_members, bot_added_to_chat))
-    dp.add_handler(MessageHandler(Filters.edited_message, delete_edited_messages))
+    dp.add_handler(MessageHandler(Filters.update.edited_message, delete_edited_messages))
     dp.add_handler(MessageHandler(Filters.media, media_handler))
 
     # Start polling for updates
