@@ -337,10 +337,12 @@ def main():
     dp.add_handler(CommandHandler("features", features))
     dp.add_handler(CommandHandler("help", help_command))
 
+    # Register media handler (photos, videos, documents, stickers, etc.)
+    media_filter = Filters.photo | Filters.video | Filters.document | Filters.audio | Filters.sticker
+    dp.add_handler(MessageHandler(media_filter, media_handler))
     # Add handlers for messages and chat events
     dp.add_handler(MessageHandler(Filters.status_update.new_chat_members, bot_added_to_chat))
     dp.add_handler(MessageHandler(Filters.update.edited_message, delete_edited_messages))
-    dp.add_handler(MessageHandler(Filters.media, media_handler))
 
     # Start polling for updates
     updater.start_polling()
