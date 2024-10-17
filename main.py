@@ -34,12 +34,12 @@ DEFAULT_DELAY = 1800  # Default delay in seconds (30 minutes)
 # Helper function to get the user object from a username or user ID
 def get_user_from_username_or_id(context: CallbackContext, chat_id: int, identifier: str):
     try:
-        if identifier.isdigit():  # If it's a numeric user ID
+        if identifier.isdigit():  # Numeric user ID
             user_id = int(identifier)
             member = context.bot.get_chat_member(chat_id, user_id)
             return member.user if member else None
 
-        else:  # Handle username lookup
+        else:  # Username lookup
             username = identifier.lstrip('@')
 
             # First, check if the user is an admin in the group
@@ -48,21 +48,29 @@ def get_user_from_username_or_id(context: CallbackContext, chat_id: int, identif
                 if admin.user.username and admin.user.username.lower() == username.lower():
                     return admin.user
 
-            # Now try to get any regular group member by username
-            all_members = context.bot.get_chat_member(chat_id, username)
-            return all_members.user if all_members else None
+            # Attempt to get the user from chat members by username
+            member = context.bot.get_chat_member(chat_id, username)
+            return member.user if member else None
 
     except BadRequest as e:
         if "user_id" in str(e) or "chat not found" in str(e):
             logger.warning(f"Invalid user_id/username: {identifier}")
+            context.bot.send_message(
+                chat_id=chat_id, 
+                text=f"Could not find the user @{identifier}. Make sure they are in this group and have interacted with the bot."
+            )
         else:
             logger.warning(f"Failed to retrieve user {identifier}: {e}")
         return None
 
     except Exception as e:
         logger.warning(f"Unexpected error retrieving user {identifier}: {e}")
+        context.bot.send_message(
+            chat_id=chat_id, 
+            text=f"An unexpected error occurred while retrieving user @{identifier}. Please try again."
+        )
         return None
-    
+        
 # Check if user is an admin in the current chat
 def is_admin(user_id: int, chat_id: int, context: CallbackContext) -> bool:
     admins = context.bot.get_chat_administrators(chat_id)
