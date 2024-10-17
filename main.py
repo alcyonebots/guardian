@@ -34,15 +34,21 @@ DEFAULT_DELAY = 1800  # Default delay in seconds (30 minutes)
 # Helper function to get the user object from a username or user ID
 def get_user_from_username_or_id(context: CallbackContext, chat_id: int, identifier: str):
     try:
-        if identifier.isdigit():  # If it's a numeric ID
+        if identifier.isdigit():  # Handle numeric user IDs
             user_id = int(identifier)
             member = context.bot.get_chat_member(chat_id, user_id)
             return member.user if member else None
-        else:  # Otherwise, treat it as a username
+        else:  # Handle username lookup
             username = identifier.lstrip('@')
-            members = context.bot.get_chat_administrators(chat_id)  # Fetching group admins as a fallback
+            all_members = context.bot.get_chat_administrators(chat_id)  # Fetching all admins first
+            for member in all_members:
+                if member.user.username and member.user.username.lower() == username.lower():
+                    return member.user
+
+            # Now search for non-admin members in the chat
+            members = context.bot.get_chat_members(chat_id)
             for member in members:
-                if member.user.username == username:
+                if member.user.username and member.user.username.lower() == username.lower():
                     return member.user
             return None
     except Exception as e:
