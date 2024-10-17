@@ -39,7 +39,8 @@ def get_user_from_username_or_id(context: CallbackContext, chat_id: int, identif
             member = context.bot.get_chat_member(chat_id, user_id)
             return member.user if member else None
         else:  # Otherwise, treat it as a username
-            username = identifier.lstrip('@')
+            username = identifier.lstrip('@')  # Remove '@' if present
+            # Try to retrieve the user by their username
             member = context.bot.get_chat_member(chat_id, username)
             return member.user if member else None
     except Exception as e:
