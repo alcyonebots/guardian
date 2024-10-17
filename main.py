@@ -70,49 +70,71 @@ def auth(update: Update, context: CallbackContext) -> None:
     if update.effective_chat.type not in ['group', 'supergroup']:
         update.message.reply_text("This command can only be used in group chats.")
         return
-    
+
     if not is_admin(update.effective_user.id, update.effective_chat.id, context):
         update.message.reply_text("You are not authorized to use this command.")
         return
-    
-    if not context.args:
+
+    if not context.args and not update.message.reply_to_message:
         update.message.reply_text("Usage: /auth <username/user_id or reply to user>")
         return
 
-    target_user = update.message.reply_to_message.from_user if update.message.reply_to_message else None
-    if target_user is None:
+    target_user = None
+
+    # If replying to a message, get the user from the reply
+    if update.message.reply_to_message:
+        target_user = update.message.reply_to_message.from_user
+
+    # If a username/user ID is provided
+    if context.args:
         target_user = get_user_from_username_or_id(context, update.effective_chat.id, context.args[0])
 
-    if target_user and target_user.id not in group_auth.get(update.effective_chat.id, []):
+    if target_user is None:
+        update.message.reply_text("User not found or invalid username/user ID.")
+        return
+
+    # Authorize the user
+    if target_user.id not in group_auth.get(update.effective_chat.id, []):
         group_auth.setdefault(update.effective_chat.id, []).append(target_user.id)
         update.message.reply_text(f"{target_user.mention_html()} is now authorized for this chat.", parse_mode=ParseMode.HTML)
     else:
-        update.message.reply_text("User is already authorized, does not exist, or could not be found.")
+        update.message.reply_text("User is already authorized.")
 
 # Command to unauthorize users to edit messages
 def unauth(update: Update, context: CallbackContext) -> None:
     if update.effective_chat.type not in ['group', 'supergroup']:
         update.message.reply_text("This command can only be used in group chats.")
         return
-    
+
     if not is_admin(update.effective_user.id, update.effective_chat.id, context):
         update.message.reply_text("You are not authorized to use this command.")
         return
 
-    if not context.args:
+    if not context.args and not update.message.reply_to_message:
         update.message.reply_text("Usage: /unauth <username/user_id or reply to user>")
         return
 
-    target_user = update.message.reply_to_message.from_user if update.message.reply_to_message else None
-    if target_user is None:
+    target_user = None
+
+    # If replying to a message, get the user from the reply
+    if update.message.reply_to_message:
+        target_user = update.message.reply_to_message.from_user
+
+    # If a username/user ID is provided
+    if context.args:
         target_user = get_user_from_username_or_id(context, update.effective_chat.id, context.args[0])
 
-    if target_user and target_user.id in group_auth.get(update.effective_chat.id, []):
+    if target_user is None:
+        update.message.reply_text("User not found or invalid username/user ID.")
+        return
+
+    # Unauthorize the user
+    if target_user.id in group_auth.get(update.effective_chat.id, []):
         group_auth[update.effective_chat.id].remove(target_user.id)
         update.message.reply_text(f"{target_user.mention_html()} is now unauthorized for this chat.", parse_mode=ParseMode.HTML)
     else:
-        update.message.reply_text("User is not authorized, does not exist, or could not be found.")
-    
+        update.message.reply_text("User is not authorized or does not exist.")
+
 # Command to list authorized users
 def authusers(update: Update, context: CallbackContext) -> None:
     if update.effective_chat.type not in ['group', 'supergroup']:
