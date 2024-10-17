@@ -36,10 +36,12 @@ def get_user_from_username_or_id(context: CallbackContext, chat_id: int, identif
     try:
         if identifier.isdigit():  # If it's a numeric ID
             user_id = int(identifier)
-            return context.bot.get_chat_member(chat_id, user_id).user
+            member = context.bot.get_chat_member(chat_id, user_id)
+            return member.user if member else None
         else:  # Otherwise, treat it as a username
             username = identifier.lstrip('@')
-            return context.bot.get_chat_member(chat_id, username).user
+            member = context.bot.get_chat_member(chat_id, username)
+            return member.user if member else None
     except Exception as e:
         logger.warning(f"Failed to retrieve user {identifier}: {e}")
         return None
@@ -85,7 +87,7 @@ def auth(update: Update, context: CallbackContext) -> None:
         group_auth.setdefault(update.effective_chat.id, []).append(target_user.id)
         update.message.reply_text(f"{target_user.mention_html()} is now authorized for this chat.", parse_mode=ParseMode.HTML)
     else:
-        update.message.reply_text("User is already authorized or does not exist.")
+        update.message.reply_text("User is already authorized, does not exist, or could not be found.")
 
 # Command to unauthorize users to edit messages
 def unauth(update: Update, context: CallbackContext) -> None:
@@ -109,8 +111,8 @@ def unauth(update: Update, context: CallbackContext) -> None:
         group_auth[update.effective_chat.id].remove(target_user.id)
         update.message.reply_text(f"{target_user.mention_html()} is now unauthorized for this chat.", parse_mode=ParseMode.HTML)
     else:
-        update.message.reply_text("User is not authorized or does not exist.")
-
+        update.message.reply_text("User is not authorized, does not exist, or could not be found.")
+    
 # Command to list authorized users
 def authusers(update: Update, context: CallbackContext) -> None:
     if update.effective_chat.type not in ['group', 'supergroup']:
