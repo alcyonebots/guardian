@@ -34,27 +34,35 @@ DEFAULT_DELAY = 1800  # Default delay in seconds (30 minutes)
 # Helper function to get the user object from a username or user ID
 def get_user_from_username_or_id(context: CallbackContext, chat_id: int, identifier: str):
     try:
-        if identifier.isdigit():  # Handle numeric user IDs
+        if identifier.isdigit():  # If it's a numeric user ID
             user_id = int(identifier)
             member = context.bot.get_chat_member(chat_id, user_id)
             return member.user if member else None
+
         else:  # Handle username lookup
             username = identifier.lstrip('@')
-            
-            # Fetching all chat admins and checking for the username among them
+
+            # First, check if the user is an admin
             admins = context.bot.get_chat_administrators(chat_id)
             for admin in admins:
                 if admin.user.username and admin.user.username.lower() == username.lower():
                     return admin.user
 
-            # Try to get the specific user from the chat using the username
+            # Try getting the member from the group using the username
             member = context.bot.get_chat_member(chat_id, username)
             return member.user if member else None
 
-    except Exception as e:
-        logger.warning(f"Failed to retrieve user {identifier}: {e}")
+    except telegram.error.BadRequest as e:
+        if "user_id" in str(e) or "chat not found" in str(e):
+            logger.warning(f"Invalid user_id/username: {identifier}")
+        else:
+            logger.warning(f"Failed to retrieve user {identifier}: {e}")
         return None
-        
+
+    except Exception as e:
+        logger.warning(f"Unexpected error retrieving user {identifier}: {e}")
+        return None
+           
 # Check if user is an admin in the current chat
 def is_admin(user_id: int, chat_id: int, context: CallbackContext) -> bool:
     admins = context.bot.get_chat_administrators(chat_id)
