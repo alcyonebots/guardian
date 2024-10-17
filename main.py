@@ -42,17 +42,17 @@ def get_user_from_username_or_id(context: CallbackContext, chat_id: int, identif
         else:  # Handle username lookup
             username = identifier.lstrip('@')
 
-            # First, check if the user is an admin
+            # First, check if the user is an admin in the group
             admins = context.bot.get_chat_administrators(chat_id)
             for admin in admins:
                 if admin.user.username and admin.user.username.lower() == username.lower():
                     return admin.user
 
-            # Try getting the member from the group using the username
-            member = context.bot.get_chat_member(chat_id, username)
-            return member.user if member else None
+            # Now try to get any regular group member by username
+            all_members = context.bot.get_chat_member(chat_id, username)
+            return all_members.user if all_members else None
 
-    except BadRequest as e:  # Updated this part
+    except BadRequest as e:
         if "user_id" in str(e) or "chat not found" in str(e):
             logger.warning(f"Invalid user_id/username: {identifier}")
         else:
@@ -62,7 +62,7 @@ def get_user_from_username_or_id(context: CallbackContext, chat_id: int, identif
     except Exception as e:
         logger.warning(f"Unexpected error retrieving user {identifier}: {e}")
         return None
-           
+    
 # Check if user is an admin in the current chat
 def is_admin(user_id: int, chat_id: int, context: CallbackContext) -> bool:
     admins = context.bot.get_chat_administrators(chat_id)
