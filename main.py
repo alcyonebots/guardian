@@ -52,7 +52,7 @@ def get_user_from_username_or_id(context: CallbackContext, chat_id: int, identif
             member = context.bot.get_chat_member(chat_id, username)
             return member.user if member else None
 
-    except telegram.error.BadRequest as e:
+    except BadRequest as e:  # Updated this part
         if "user_id" in str(e) or "chat not found" in str(e):
             logger.warning(f"Invalid user_id/username: {identifier}")
         else:
