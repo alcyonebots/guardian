@@ -32,43 +32,14 @@ group_delay = {}  # Dictionary to store delay settings per group
 DEFAULT_DELAY = 1800  # Default delay in seconds (30 minutes)
 
 # Helper function to get the user object from a username or user ID
-def get_user_from_username_or_id(context: CallbackContext, chat_id: int, identifier: str):
+def get_user_from_username(context: CallbackContext, chat_id: int, username: str):
+    username = username.lstrip('@')  # Remove the '@' if present
     try:
-        if identifier.isdigit():  # Numeric user ID
-            user_id = int(identifier)
-            member = context.bot.get_chat_member(chat_id, user_id)
-            return member.user if member else None
-
-        else:  # Username lookup
-            username = identifier.lstrip('@')
-
-            # First, check if the user is an admin in the group
-            admins = context.bot.get_chat_administrators(chat_id)
-            for admin in admins:
-                if admin.user.username and admin.user.username.lower() == username.lower():
-                    return admin.user
-
-            # Attempt to get the user from chat members by username
-            member = context.bot.get_chat_member(chat_id, username)
-            return member.user if member else None
-
+        # Attempt to get the chat member by username
+        member = context.bot.get_chat_member(chat_id, username)
+        return member.user if member else None
     except BadRequest as e:
-        if "user_id" in str(e) or "chat not found" in str(e):
-            logger.warning(f"Invalid user_id/username: {identifier}")
-            context.bot.send_message(
-                chat_id=chat_id, 
-                text=f"Could not find the user @{identifier}. Make sure they are in this group and have interacted with the bot."
-            )
-        else:
-            logger.warning(f"Failed to retrieve user {identifier}: {e}")
-        return None
-
-    except Exception as e:
-        logger.warning(f"Unexpected error retrieving user {identifier}: {e}")
-        context.bot.send_message(
-            chat_id=chat_id, 
-            text=f"An unexpected error occurred while retrieving user @{identifier}. Please try again."
-        )
+        logger.warning(f"Failed to retrieve user {username}: {e}")
         return None
         
 # Check if user is an admin in the current chat
@@ -91,74 +62,81 @@ def start(update: Update, context: CallbackContext) -> None:
     )
     
 # Command to authorize users to edit messages
-def auth(update: Update, context: CallbackContext) -> None:
-    if update.effective_chat.type not in ['group', 'supergroup']:
-        update.message.reply_text("This command can only be used in group chats.")
-        return
-
-    if not is_admin(update.effective_user.id, update.effective_chat.id, context):
-        update.message.reply_text("You are not authorized to use this command.")
-        return
+def auth(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
 
     if not context.args and not update.message.reply_to_message:
-        update.message.reply_text("Usage: /auth <username/user_id or reply to user>")
+        update.message.reply_text("Please specify a user by username or ID, or reply to a user to authorize.")
         return
 
-    target_user = None
+    if context.args:  # User authorization by username or ID
+        identifier = context.args[0]
+        if identifier.isdigit():  # User ID
+            user_id = int(identifier)
+            member = context.bot.get_chat_member(chat_id, user_id)
+            if member:
+                user_mention = member.user.mention_html()
+            else:
+                update.message.reply_text("Invalid user ID.")
+                return
+        else:  # Username
+            member = get_user_from_username(context, chat_id, identifier)
+            if member:
+                user_mention = member.mention_html()
+            else:
+                update.message.reply_text(f"Could not find user @{identifier}. They need to be in this group and must have interacted with the bot.")
+                return
 
-    # If replying to a message, get the user from the reply
-    if update.message.reply_to_message:
-        target_user = update.message.reply_to_message.from_user
-
-    # If a username/user ID is provided
-    if context.args:
-        target_user = get_user_from_username_or_id(context, update.effective_chat.id, context.args[0])
-
-    if target_user is None:
-        update.message.reply_text("User not found or invalid username/user ID.")
-        return
+    elif update.message.reply_to_message:  # Authorization by reply
+        user_id = update.message.reply_to_message.from_user.id
+        member = context.bot.get_chat_member(chat_id, user_id)
+        if member:
+            user_mention = update.message.reply_to_message.from_user.mention_html()
+        else:
+            update.message.reply_text("Invalid user ID.")
+            return
 
     # Authorize the user
-    if target_user.id not in group_auth.get(update.effective_chat.id, []):
-        group_auth.setdefault(update.effective_chat.id, []).append(target_user.id)
-        update.message.reply_text(f"{target_user.mention_html()} is now authorized for this chat.", parse_mode=ParseMode.HTML)
-    else:
-        update.message.reply_text("User is already authorized.")
+    authorized_users[chat_id].add(member.user.id)
+    update.message.reply_text(f"{user_mention} is now authorized for this chat.", parse_mode=ParseMode.HTML)
 
-# Command to unauthorize users to edit messages
-def unauth(update: Update, context: CallbackContext) -> None:
-    if update.effective_chat.type not in ['group', 'supergroup']:
-        update.message.reply_text("This command can only be used in group chats.")
-        return
 
-    if not is_admin(update.effective_user.id, update.effective_chat.id, context):
-        update.message.reply_text("You are not authorized to use this command.")
-        return
+def unauth(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
 
     if not context.args and not update.message.reply_to_message:
-        update.message.reply_text("Usage: /unauth <username/user_id or reply to user>")
+        update.message.reply_text("Please specify a user by username or ID, or reply to a user to unauthorize.")
         return
 
-    target_user = None
+    if context.args:  # User unauthorization by username or ID
+        identifier = context.args[0]
+        if identifier.isdigit():  # User ID
+            user_id = int(identifier)
+            if user_id in authorized_users[chat_id]:
+                user_mention = f"User ID {user_id}"
+            else:
+                update.message.reply_text(f"User ID {user_id} is not authorized.")
+                return
+        else:  # Username
+            member = get_user_from_username(context, chat_id, identifier)
+            if member and member.user.id in authorized_users[chat_id]:
+                user_mention = member.mention_html()
+            else:
+                update.message.reply_text(f"Could not find user @{identifier} or they are not authorized.")
+                return
 
-    # If replying to a message, get the user from the reply
-    if update.message.reply_to_message:
-        target_user = update.message.reply_to_message.from_user
-
-    # If a username/user ID is provided
-    if context.args:
-        target_user = get_user_from_username_or_id(context, update.effective_chat.id, context.args[0])
-
-    if target_user is None:
-        update.message.reply_text("User not found or invalid username/user ID.")
-        return
+    elif update.message.reply_to_message:  # Unauthorization by reply
+        user_id = update.message.reply_to_message.from_user.id
+        if user_id in authorized_users[chat_id]:
+            user_mention = update.message.reply_to_message.from_user.mention_html()
+        else:
+            update.message.reply_text(f"User {user_id} is not authorized.")
+            return
 
     # Unauthorize the user
-    if target_user.id in group_auth.get(update.effective_chat.id, []):
-        group_auth[update.effective_chat.id].remove(target_user.id)
-        update.message.reply_text(f"{target_user.mention_html()} is now unauthorized for this chat.", parse_mode=ParseMode.HTML)
-    else:
-        update.message.reply_text("User is not authorized or does not exist.")
+    authorized_users[chat_id].remove(member.user.id)
+    update.message.reply_text(f"{user_mention} is no longer authorized for this chat.", parse_mode=ParseMode.HTML)
+                
 
 # Command to list authorized users
 def authusers(update: Update, context: CallbackContext) -> None:
