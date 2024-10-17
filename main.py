@@ -1,343 +1,249 @@
 import os
-import threading
-import time
-from telegram import Update, Chat, ChatMember
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, ChatMemberHandler
-from dotenv import load_dotenv
+import logging
+from telegram import Update, ParseMode
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram.error import BadRequest
 from pymongo import MongoClient
+from dotenv import load_dotenv
+from threading import Timer
 
-# Load environment variables from .env file
+# Load environment variables
 load_dotenv()
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+MONGODB_URI = os.getenv("MONGODB_URI")
+OWNER_ID = int(os.getenv("OWNER_ID"))
 
-# Get bot token, MongoDB URI, bot owner ID, and log group ID from .env file
-BOT_TOKEN = os.getenv('BOT_TOKEN')
-MONGODB_URI = os.getenv('MONGODB_URI')
-BOT_OWNER_ID = int(os.getenv('BOT_OWNER_ID'))
-LOG_GROUP_ID = int(os.getenv('LOG_GROUP_ID'))  # Group ID where logs will be sent
+# List of admin user IDs
+ADMINS = [123456789, 987654321]  # Replace with actual Telegram user IDs of admins
 
-# Default deletion delay time in seconds (30 minutes)
-DEFAULT_DELAY_TIME = 1800
+# Set up logging
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Initialize MongoDB client and database
+# MongoDB setup
 client = MongoClient(MONGODB_URI)
-db = client['telegram_bot_db']
-authorized_users_collection = db['authorized_users']
-global_authorized_users_collection = db['global_authorized_users']
-bot_stats_collection = db['bot_stats']
-group_chats_collection = db['group_chats']
-delay_collection = db['delay_settings']
+db = client['telegram_bot']
+auth_collection = db['authorized_users']
 
-# Function to log new group chats or users
-def log_event(context: CallbackContext, message: str):
-    context.bot.send_message(chat_id=LOG_GROUP_ID, text=message)
+# In-memory storage for group auth and delay settings
+group_auth = {}
+group_delay = {}  # Dictionary to store delay settings per group
 
-# Function to start the bot
-def start(update: Update, context: CallbackContext):
-    user = update.message.from_user
-    chat = update.effective_chat
+DEFAULT_DELAY = 1800  # Default delay in seconds (30 minutes)
 
-    # If it's a private chat (user starting the bot)
-    if chat.type == Chat.PRIVATE:
-        log_event(context, f"New user started the bot:\n- User: {user.mention_markdown_v2()}\n- User ID: {user.id}")
-        update.message.reply_text("Welcome! I'm here to assist you.")
-
-    update_bot_stats(user.id)  # Track user interaction
-    add_chat(chat.id)  # Track the group chat (if applicable)
-
-# Function to track the group chat in the database
-def add_chat(chat_id):
-    group_chats_collection.update_one(
-        {"_id": chat_id},
-        {"$setOnInsert": {"_id": chat_id}},
-        upsert=True
-    )
-
-# Function to check if the user is an admin
-def is_user_admin(chat_id, user_id, bot):
+# Helper function to get the user object from a username or user ID
+def get_user_from_username_or_id(context: CallbackContext, chat_id: int, identifier: str):
     try:
-        member = bot.get_chat_member(chat_id, user_id)
-        return member.status in ['administrator', 'creator']
+        if identifier.isdigit():  # If it's a numeric ID
+            user_id = int(identifier)
+            return context.bot.get_chat_member(chat_id, user_id).user
+        else:  # Otherwise, treat it as a username
+            username = identifier.lstrip('@')
+            return context.bot.get_chat_member(chat_id, username).user
     except Exception as e:
-        print(f"Error checking admin status: {e}")
-        return False
+        logger.warning(f"Failed to retrieve user {identifier}: {e}")
+        return None
 
-# Function to authorize a user in a group
-def auth_user_in_group(chat_id, user_id):
-    authorized_users_collection.update_one(
-        {"chat_id": chat_id},
-        {"$addToSet": {"users": user_id}},
-        upsert=True
+# Check if user is an admin in the current chat
+def is_admin(user_id: int, chat_id: int, context: CallbackContext) -> bool:
+    admins = context.bot.get_chat_administrators(chat_id)
+    return user_id in [admin.user.id for admin in admins] or user_id in ADMINS
+
+# Command to start the bot
+def start(update: Update, context: CallbackContext) -> None:
+    user_id = update.effective_user.id
+    
+    # Add user to the database if they haven't started the bot before
+    if not auth_collection.find_one({"user_id": user_id}):
+        auth_collection.insert_one({"user_id": user_id, "is_started": True})
+
+    update.message.reply_text(
+        "Welcome to the bot! This bot helps manage message editing in group chats. "
+        "Admins can authorize users to edit messages, and the bot will delete edited messages "
+        "from unauthorized users immediately. Use /help to see available commands."
     )
 
-# Function to unauthorize a user in a group
-def unauth_user_in_group(chat_id, user_id):
-    authorized_users_collection.update_one(
-        {"chat_id": chat_id},
-        {"$pull": {"users": user_id}}
-    )
+# Command to authorize users to edit messages
+def auth(update: Update, context: CallbackContext) -> None:
+    if update.effective_chat.type not in ['group', 'supergroup']:
+        update.message.reply_text("This command can only be used in group chats.")
+        return
+    
+    if not is_admin(update.effective_user.id, update.effective_chat.id, context):
+        update.message.reply_text("You are not authorized to use this command.")
+        return
+    
+    if not context.args:
+        update.message.reply_text("Usage: /auth <username/user_id or reply to user>")
+        return
 
-# Function to globally authorize a user
-def gauth_user(user_id):
-    global_authorized_users_collection.update_one(
-        {"_id": "global"},
-        {"$addToSet": {"users": user_id}},
-        upsert=True
-    )
+    target_user = update.message.reply_to_message.from_user if update.message.reply_to_message else None
+    if target_user is None:
+        target_user = get_user_from_username_or_id(context, update.effective_chat.id, context.args[0])
 
-# Function to globally unauthorize a user
-def ungauth_user(user_id):
-    global_authorized_users_collection.update_one(
-        {"_id": "global"},
-        {"$pull": {"users": user_id}}
-    )
+    if target_user and target_user.id not in group_auth.get(update.effective_chat.id, []):
+        group_auth.setdefault(update.effective_chat.id, []).append(target_user.id)
+        update.message.reply_text(f"{target_user.mention_html()} is now authorized for this chat.", parse_mode=ParseMode.HTML)
+    else:
+        update.message.reply_text("User is already authorized or does not exist.")
 
-# Function to check if a user is globally authorized
-def is_globally_authorized(user_id):
-    global_auth = global_authorized_users_collection.find_one({"_id": "global"})
-    return global_auth and "users" in global_auth and user_id in global_auth['users']
+# Command to unauthorize users to edit messages
+def unauth(update: Update, context: CallbackContext) -> None:
+    if update.effective_chat.type not in ['group', 'supergroup']:
+        update.message.reply_text("This command can only be used in group chats.")
+        return
+    
+    if not is_admin(update.effective_user.id, update.effective_chat.id, context):
+        update.message.reply_text("You are not authorized to use this command.")
+        return
 
-# Function to delete media or sticker after a specific delay
-def schedule_deletion(context, chat_id, message_id, delay_time):
-    def delete_message():
-        time.sleep(delay_time)  # Wait for the specified delay time
+    if not context.args:
+        update.message.reply_text("Usage: /unauth <username/user_id or reply to user>")
+        return
+
+    target_user = update.message.reply_to_message.from_user if update.message.reply_to_message else None
+    if target_user is None:
+        target_user = get_user_from_username_or_id(context, update.effective_chat.id, context.args[0])
+
+    if target_user and target_user.id in group_auth.get(update.effective_chat.id, []):
+        group_auth[update.effective_chat.id].remove(target_user.id)
+        update.message.reply_text(f"{target_user.mention_html()} is now unauthorized for this chat.", parse_mode=ParseMode.HTML)
+    else:
+        update.message.reply_text("User is not authorized or does not exist.")
+
+# Command to list authorized users
+def authusers(update: Update, context: CallbackContext) -> None:
+    if update.effective_chat.type not in ['group', 'supergroup']:
+        update.message.reply_text("This command can only be used in group chats.")
+        return
+    
+    if not is_admin(update.effective_user.id, update.effective_chat.id, context):
+        update.message.reply_text("You are not authorized to use this command.")
+        return
+
+    authorized_users = group_auth.get(update.effective_chat.id, [])
+    if authorized_users:
+        user_list = ", ".join([context.bot.get_chat_member(update.effective_chat.id, user_id).user.username for user_id in authorized_users])
+        update.message.reply_text(f"Authorized users: {user_list}")
+    else:
+        update.message.reply_text("No authorized users.")
+
+# Handler for message edits
+def message_edit(update: Update, context: CallbackContext) -> None:
+    if update.effective_chat.type not in ['group', 'supergroup']:
+        return
+    
+    user_id = update.message.from_user.id
+
+    if user_id in group_auth.get(update.effective_chat.id, []) or \
+       user_id == OWNER_ID or \
+       is_admin(user_id, update.effective_chat.id, context):
+        return  # Authorized user, owner, or admin, do nothing
+
+    try:
+        context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
+        context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"{update.message.from_user.mention_html()} just edited a message and I deleted it.",
+            parse_mode=ParseMode.HTML
+        )
+    except BadRequest:
+        logger.warning(f"Failed to delete message {update.message.message_id} from {update.message.from_user.username}")
+
+# Command to broadcast a message to all groups and users who started the bot
+def broadcast(update: Update, context: CallbackContext) -> None:
+    if update.effective_user.id != OWNER_ID:
+        update.message.reply_text("You are not authorized to use this command.")
+        return
+
+    if not context.args:
+        update.message.reply_text("Usage: /broadcast <message>")
+        return
+
+    message = ' '.join(context.args)
+
+    # Send to all groups
+    for chat_id in group_auth.keys():
         try:
-            context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+            context.bot.send_message(chat_id=chat_id, text=message)
         except Exception as e:
-            print(f"Failed to delete message {message_id} in chat {chat_id}: {e}")
+            logger.warning(f"Failed to send message to group {chat_id}: {e}")
 
-    # Run the deletion in a separate thread
-    threading.Thread(target=delete_message).start()
+    # Send to all users who started the bot
+    users = auth_collection.find({"is_started": True})  # Modify this as necessary
+    for user in users:
+        try:
+            context.bot.send_message(chat_id=user['user_id'], text=message)
+        except Exception as e:
+            logger.warning(f"Failed to send message to user {user['user_id']}: {e}")
 
-# Function to get the deletion delay time for a chat
-def get_deletion_delay(chat_id):
-    chat_data = delay_collection.find_one({"chat_id": chat_id})
-    if chat_data and "delay_time" in chat_data:
-        return chat_data['delay_time']
-    return DEFAULT_DELAY_TIME  # Default to 30 minutes if no custom delay is set
+    update.message.reply_text("Broadcast message sent.")
 
-# Message handler for media and sticker messages
-def handle_media_and_stickers(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    message_id = update.message.message_id
+# Command to set deletion delay
+def setdelay(update: Update, context: CallbackContext) -> None:
+    if update.effective_chat.type not in ['group', 'supergroup']:
+        update.message.reply_text("This command can only be used in group chats.")
+        return
+    
+    if not is_admin(update.effective_user.id, update.effective_chat.id, context):
+        update.message.reply_text("You are not authorized to use this command.")
+        return
 
-    # Determine the appropriate delay time for this chat
-    delay_time = get_deletion_delay(chat_id)
+    if not context.args or not context.args[0].isdigit():
+        update.message.reply_text("Usage: /setdelay <delay_in_minutes>")
+        return
 
-    # Schedule the deletion of the media or sticker message
-    schedule_deletion(context, chat_id, message_id, delay_time)
+    delay_minutes = int(context.args[0])
+    group_delay[update.effective_chat.id] = delay_minutes * 60  # Convert to seconds
+    update.message.reply_text(f"Media and sticker deletion delay set to {delay_minutes} minutes.")
 
-# Function to handle the /setdelay command (admin only)
-def setdelay(update: Update, context: CallbackContext):
-    user = update.message.from_user
-    chat_id = update.effective_chat.id
+# Handler for media and sticker messages
+def media_handler(update: Update, context: CallbackContext) -> None:
+    if update.effective_chat.type not in ['group', 'supergroup']:
+        return
 
-    if is_user_admin(chat_id, user.id, context.bot):
-        if context.args and context.args[0].isdigit():
-            delay_time = int(context.args[0]) * 60  # Convert minutes to seconds
-            delay_collection.update_one(
-                {"chat_id": chat_id},
-                {"$set": {"delay_time": delay_time}},
-                upsert=True
-            )
-            update.message.reply_text(f"Deletion delay time is set to {context.args[0]} minutes.")
-        else:
-            update.message.reply_text("Please provide the delay time in minutes (e.g., /setdelay 10).")
-    else:
-        update.message.reply_text("Only admins can use the /setdelay command.")
+    user_id = update.message.from_user.id
 
-# Function to handle the /auth command (admin only)
-def auth(update: Update, context: CallbackContext):
-    user = update.message.from_user
-    chat_id = update.effective_chat.id
+    if user_id in group_auth.get(update.effective_chat.id, []) or \
+       user_id == OWNER_ID or \
+       is_admin(user_id, update.effective_chat.id, context):
+        return  # Authorized user, owner, or admin, do nothing
 
-    if is_user_admin(chat_id, user.id, context.bot):
-        if update.message.reply_to_message:
-            target_user = update.message.reply_to_message.from_user
-            auth_user_in_group(chat_id, target_user.id)
-            update.message.reply_text(f"{target_user.mention_markdown_v2()} is now authorized.", parse_mode="MarkdownV2")
-        elif context.args:
-            target_user_username = context.args[0]
-            try:
-                target_user = context.bot.get_chat(target_user_username)
-                auth_user_in_group(chat_id, target_user.id)
-                update.message.reply_text(f"{target_user.mention_markdown_v2()} is now authorized.", parse_mode="MarkdownV2")
-            except:
-                update.message.reply_text("Could not find user.")
-        else:
-            update.message.reply_text("Reply to a user or provide a username to authorize.")
-    else:
-        update.message.reply_text("Only admins can use the /auth command.")
+    delay = group_delay.get(update.effective_chat.id, DEFAULT_DELAY)
+    Timer(delay, delete_message, [context, update.effective_chat.id, update.message.message_id]).start()
 
-# Function to handle the /unauth command (admin only)
-def unauth(update: Update, context: CallbackContext):
-    user = update.message.from_user
-    chat_id = update.effective_chat.id
+def delete_message(context: CallbackContext, chat_id: int, message_id: int):
+    try:
+        context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except BadRequest:
+        logger.warning(f"Failed to delete message {message_id} from chat {chat_id}")
 
-    if is_user_admin(chat_id, user.id, context.bot):
-        if update.message.reply_to_message:
-            target_user = update.message.reply_to_message.from_user
-            unauth_user_in_group(chat_id, target_user.id)
-            update.message.reply_text(f"{target_user.mention_markdown_v2()} is now unauthorized.", parse_mode="MarkdownV2")
-        elif context.args:
-            target_user_username = context.args[0]
-            try:
-                target_user = context.bot.get_chat(target_user_username)
-                unauth_user_in_group(chat_id, target_user.id)
-                update.message.reply_text(f"{target_user.mention_markdown_v2()} is now unauthorized.", parse_mode="MarkdownV2")
-            except:
-                update.message.reply_text("Could not find user.")
-        else:
-            update.message.reply_text("Reply to a user or provide a username to unauthorize.")
-    else:
-        update.message.reply_text("Only admins can use the /unauth command.")
+# Command to get stats
+def stats(update: Update, context: CallbackContext) -> None:
+    if update.effective_user.id != OWNER_ID and update.effective_user.id not in ADMINS:
+        update.message.reply_text("You are not authorized to use this command.")
+        return
 
-# Function to handle the /gauth command (bot owner only)
-def gauth(update: Update, context: CallbackContext):
-    user = update.message.from_user
-
-    if user.id == BOT_OWNER_ID:
-        if update.message.reply_to_message:
-            target_user = update.message.reply_to_message.from_user
-            gauth_user(target_user.id)
-            update.message.reply_text(f"{target_user.mention_markdown_v2()} is now globally authorized.", parse_mode="MarkdownV2")
-        elif context.args:
-            target_user_username = context.args[0]
-            try:
-                target_user = context.bot.get_chat(target_user_username)
-                gauth_user(target_user.id)
-                update.message.reply_text(f"{target_user.mention_markdown_v2()} is now globally authorized.", parse_mode="MarkdownV2")
-            except:
-                update.message.reply_text("Could not find user.")
-        else:
-            update.message.reply_text("Reply to a user or provide a username to globally authorize.")
-    else:
-        update.message.reply_text("Only the bot owner can use the /gauth command.")
-
-# Function to handle the /ungauth command (bot owner only)
-def ungauth(update: Update, context: CallbackContext):
-    user = update.message.from_user
-
-    if user.id == BOT_OWNER_ID:
-        if update.message.reply_to_message:
-            target_user = update.message.reply_to_message.from_user
-            ungauth_user(target_user.id)
-            update.message.reply_text(f"{target_user.mention_markdown_v2()} is now globally unauthorized.", parse_mode="MarkdownV2")
-        elif context.args:
-            target_user_username = context.args[0]
-            try:
-                target_user = context.bot.get_chat(target_user_username)
-                ungauth_user(target_user.id)
-                update.message.reply_text(f"{target_user.mention_markdown_v2()} is now globally unauthorized.", parse_mode="MarkdownV2")
-            except:
-                update.message.reply_text("Could not find user.")
-        else:
-            update.message.reply_text("Reply to a user or provide a username to globally unauthorize.")
-    else:
-        update.message.reply_text("Only the bot owner can use the /ungauth command.")
-
-# Function to handle the /authusers command (admin only)
-def authusers(update: Update, context: CallbackContext):
-    user = update.message.from_user
-    chat_id = update.effective_chat.id
-
-    if is_user_admin(chat_id, user.id, context.bot):
-        auth_users = authorized_users_collection.find_one({"chat_id": chat_id})
-        if auth_users and "users" in auth_users:
-            user_mentions = []
-            for index, user_id in enumerate(auth_users['users'], 1):
-                chat_member = context.bot.get_chat_member(chat_id, user_id)
-                user_mentions.append(f"{index}- {chat_member.user.mention_markdown_v2()}")
-            update.message.reply_text("\n".join(user_mentions), parse_mode="MarkdownV2")
-        else:
-            update.message.reply_text("No authorized users in this chat.")
-    else:
-        update.message.reply_text("Only admins can use the /authusers command.")
-
-# Function to handle the /gauthusers command (bot owner only)
-def gauthusers(update: Update, context: CallbackContext):
-    user = update.message.from_user
-
-    if user.id == BOT_OWNER_ID:
-        global_auth_users = global_authorized_users_collection.find_one({"_id": "global"})
-        if global_auth_users and "users" in global_auth_users:
-            user_mentions = []
-            for index, user_id in enumerate(global_auth_users['users'], 1):
-                user_chat = context.bot.get_chat(user_id)
-                user_mentions.append(f"{index}- {user_chat.mention_markdown_v2()}")
-            update.message.reply_text("\n".join(user_mentions), parse_mode="MarkdownV2")
-        else:
-            update.message.reply_text("No globally authorized users.")
-    else:
-        update.message.reply_text("Only the bot owner can use the /gauthusers command.")
-
-# Function to handle the /stats command
-def stats(update: Update, context: CallbackContext):
-    chat_count = group_chats_collection.count_documents({})
-    user_count = bot_stats_collection.count_documents({})
-    update.message.reply_text(f"Bot is in {chat_count} group(s) and {user_count} user(s) have interacted with the bot.")
-
-# Function to handle the /broadcast command (bot owner only)
-def broadcast(update: Update, context: CallbackContext):
-    user = update.message.from_user
-
-    if user.id == BOT_OWNER_ID:
-        if context.args:
-            message = " ".join(context.args)
-            group_chats = group_chats_collection.find()
-            users = bot_stats_collection.find()
-            for chat in group_chats:
-                try:
-                    context.bot.send_message(chat_id=chat['_id'], text=message)
-                except Exception as e:
-                    print(f"Failed to send message to chat {chat['_id']}: {e}")
-            for user in users:
-                try:
-                    context.bot.send_message(chat_id=user['_id'], text=message)
-                except Exception as e:
-                    print(f"Failed to send message to user {user['_id']}: {e}")
-            update.message.reply_text("Broadcast message sent!")
-        else:
-            update.message.reply_text("Please provide a message to broadcast.")
-    else:
-        update.message.reply_text("Only the bot owner can use the /broadcast command.")
-
-# Function to update the bot stats when a user interacts
-def update_bot_stats(user_id):
-    bot_stats_collection.update_one(
-        {"_id": user_id},
-        {"$setOnInsert": {"_id": user_id}},
-        upsert=True
-    )
-
-# Function to handle new chat member updates (bot added to new chat)
-def handle_chat_member_update(update: Update, context: CallbackContext):
-    if isinstance(update.my_chat_member.new_chat_member, ChatMember):
-        if update.my_chat_member.new_chat_member.status in ['administrator', 'member']:
-            chat = update.effective_chat
-            log_event(context, f"Bot added to a new chat:\n- Chat: {chat.title or chat.first_name}\n- Chat ID: {chat.id}")
+    chat_count = len(group_auth)  # Number of groups the bot is in
+    user_count = auth_collection.count_documents({"is_started": True})  # Number of users who started the bot
+    update.message.reply_text(f"The bot is in {chat_count} chats and has {user_count} users.")
 
 # Main function to start the bot
-def main():
-    updater = Updater(BOT_TOKEN, use_context=True)
+def main() -> None:
+    updater = Updater(TELEGRAM_TOKEN)
+
+    # Handlers
     dp = updater.dispatcher
-
-    # Add handlers for the commands and media/sticker messages
     dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("setdelay", setdelay, Filters.chat_type.groups))
-    dp.add_handler(CommandHandler("auth", auth, Filters.chat_type.groups))
-    dp.add_handler(CommandHandler("unauth", unauth, Filters.chat_type.groups))
-    dp.add_handler(CommandHandler("gauth", gauth))
-    dp.add_handler(CommandHandler("ungauth", ungauth))
-    dp.add_handler(CommandHandler("authusers", authusers, Filters.chat_type.groups))
-    dp.add_handler(CommandHandler("gauthusers", gauthusers))
-    dp.add_handler(CommandHandler("stats", stats))
+    dp.add_handler(CommandHandler("auth", auth))
+    dp.add_handler(CommandHandler("unauth", unauth))
+    dp.add_handler(CommandHandler("authusers", authusers))
     dp.add_handler(CommandHandler("broadcast", broadcast))
-    dp.add_handler(MessageHandler(Filters.chat_type.groups & (Filters.photo | Filters.video | Filters.sticker), handle_media_and_stickers))
+    dp.add_handler(CommandHandler("setdelay", setdelay))
+    dp.add_handler(CommandHandler("stats", stats))
+    dp.add_handler(MessageHandler(Filters.update.edited_message, message_edit))
+    dp.add_handler(MessageHandler(Filters.photo | Filters.video | Filters.document | Filters.audio | Filters.sticker, media_handler))
 
-    # Chat member handler to track when the bot is added to a new group
-    dp.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.MY_CHAT_MEMBER))
-
-    # Start the bot
     updater.start_polling()
     updater.idle()
 
