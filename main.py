@@ -40,17 +40,17 @@ def get_user_from_username_or_id(context: CallbackContext, chat_id: int, identif
             return member.user if member else None
         else:  # Handle username lookup
             username = identifier.lstrip('@')
-            all_members = context.bot.get_chat_administrators(chat_id)  # Fetching all admins first
-            for member in all_members:
-                if member.user.username and member.user.username.lower() == username.lower():
-                    return member.user
+            
+            # Fetching all chat admins and checking for the username among them
+            admins = context.bot.get_chat_administrators(chat_id)
+            for admin in admins:
+                if admin.user.username and admin.user.username.lower() == username.lower():
+                    return admin.user
 
-            # Now search for non-admin members in the chat
-            members = context.bot.get_chat_members(chat_id)
-            for member in members:
-                if member.user.username and member.user.username.lower() == username.lower():
-                    return member.user
-            return None
+            # Try to get the specific user from the chat using the username
+            member = context.bot.get_chat_member(chat_id, username)
+            return member.user if member else None
+
     except Exception as e:
         logger.warning(f"Failed to retrieve user {identifier}: {e}")
         return None
@@ -143,7 +143,7 @@ def unauth(update: Update, context: CallbackContext) -> None:
         update.message.reply_text(f"{target_user.mention_html()} is now unauthorized for this chat.", parse_mode=ParseMode.HTML)
     else:
         update.message.reply_text("User is not authorized or does not exist.")
-        
+
 # Command to list authorized users
 def authusers(update: Update, context: CallbackContext) -> None:
     if update.effective_chat.type not in ['group', 'supergroup']:
