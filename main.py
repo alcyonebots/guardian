@@ -133,7 +133,9 @@ def message_edit(update: Update, context: CallbackContext) -> None:
     if update.effective_chat.type not in ['group', 'supergroup']:
         return
     
-    user_id = update.message.from_user.id
+    # For edited messages, we should access 'update.edited_message'
+    edited_message = update.edited_message
+    user_id = edited_message.from_user.id
 
     if user_id in group_auth.get(update.effective_chat.id, []) or \
        user_id == OWNER_ID or \
@@ -141,15 +143,15 @@ def message_edit(update: Update, context: CallbackContext) -> None:
         return  # Authorized user, owner, or admin, do nothing
 
     try:
-        context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
+        context.bot.delete_message(chat_id=update.effective_chat.id, message_id=edited_message.message_id)
         context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"{update.message.from_user.mention_html()} just edited a message and I deleted it.",
+            text=f"{edited_message.from_user.mention_html()} just edited a message and I deleted it.",
             parse_mode=ParseMode.HTML
         )
     except BadRequest:
-        logger.warning(f"Failed to delete message {update.message.message_id} from {update.message.from_user.username}")
-
+        logger.warning(f"Failed to delete message {edited_message.message_id} from {edited_message.from_user.username}")
+        
 # Command to broadcast a message to all groups and users who started the bot
 def broadcast(update: Update, context: CallbackContext) -> None:
     if update.effective_user.id != OWNER_ID:
