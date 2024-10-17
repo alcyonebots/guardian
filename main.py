@@ -14,7 +14,7 @@ MONGODB_URI = os.getenv("MONGODB_URI")
 OWNER_ID = int(os.getenv("OWNER_ID"))
 
 # List of admin user IDs
-ADMINS = [123456789, 987654321]  # Replace with actual Telegram user IDs of admins
+ADMINS = [1110013191, 6663845789]  # Replace with actual Telegram user IDs of admins
 
 # Set up logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
