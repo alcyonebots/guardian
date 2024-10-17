@@ -1,9 +1,8 @@
 import os
 import threading
 import time
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ChatMemberHandler
 from telegram import Update, Chat, ChatMember
-from telegram.ext.callbackcontext import CallbackContext
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, ChatMemberHandler
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
@@ -55,8 +54,12 @@ def add_chat(chat_id):
 
 # Function to check if the user is an admin
 def is_user_admin(chat_id, user_id, bot):
-    member = bot.get_chat_member(chat_id, user_id)
-    return member.status in ['administrator', 'creator']
+    try:
+        member = bot.get_chat_member(chat_id, user_id)
+        return member.status in ['administrator', 'creator']
+    except Exception as e:
+        print(f"Error checking admin status: {e}")
+        return False
 
 # Function to authorize a user in a group
 def auth_user_in_group(chat_id, user_id):
@@ -153,8 +156,9 @@ def auth(update: Update, context: CallbackContext):
             auth_user_in_group(chat_id, target_user.id)
             update.message.reply_text(f"{target_user.mention_markdown_v2()} is now authorized.", parse_mode="MarkdownV2")
         elif context.args:
+            target_user_username = context.args[0]
             try:
-                target_user = context.bot.get_chat(context.args[0])
+                target_user = context.bot.get_chat(target_user_username)
                 auth_user_in_group(chat_id, target_user.id)
                 update.message.reply_text(f"{target_user.mention_markdown_v2()} is now authorized.", parse_mode="MarkdownV2")
             except:
@@ -175,8 +179,9 @@ def unauth(update: Update, context: CallbackContext):
             unauth_user_in_group(chat_id, target_user.id)
             update.message.reply_text(f"{target_user.mention_markdown_v2()} is now unauthorized.", parse_mode="MarkdownV2")
         elif context.args:
+            target_user_username = context.args[0]
             try:
-                target_user = context.bot.get_chat(context.args[0])
+                target_user = context.bot.get_chat(target_user_username)
                 unauth_user_in_group(chat_id, target_user.id)
                 update.message.reply_text(f"{target_user.mention_markdown_v2()} is now unauthorized.", parse_mode="MarkdownV2")
             except:
@@ -196,8 +201,9 @@ def gauth(update: Update, context: CallbackContext):
             gauth_user(target_user.id)
             update.message.reply_text(f"{target_user.mention_markdown_v2()} is now globally authorized.", parse_mode="MarkdownV2")
         elif context.args:
+            target_user_username = context.args[0]
             try:
-                target_user = context.bot.get_chat(context.args[0])
+                target_user = context.bot.get_chat(target_user_username)
                 gauth_user(target_user.id)
                 update.message.reply_text(f"{target_user.mention_markdown_v2()} is now globally authorized.", parse_mode="MarkdownV2")
             except:
@@ -217,8 +223,9 @@ def ungauth(update: Update, context: CallbackContext):
             ungauth_user(target_user.id)
             update.message.reply_text(f"{target_user.mention_markdown_v2()} is now globally unauthorized.", parse_mode="MarkdownV2")
         elif context.args:
+            target_user_username = context.args[0]
             try:
-                target_user = context.bot.get_chat(context.args[0])
+                target_user = context.bot.get_chat(target_user_username)
                 ungauth_user(target_user.id)
                 update.message.reply_text(f"{target_user.mention_markdown_v2()} is now globally unauthorized.", parse_mode="MarkdownV2")
             except:
@@ -281,13 +288,13 @@ def broadcast(update: Update, context: CallbackContext):
             for chat in group_chats:
                 try:
                     context.bot.send_message(chat_id=chat['_id'], text=message)
-                except:
-                    continue  # Handle potential failure in group message
+                except Exception as e:
+                    print(f"Failed to send message to chat {chat['_id']}: {e}")
             for user in users:
                 try:
                     context.bot.send_message(chat_id=user['_id'], text=message)
-                except:
-                    continue  # Handle potential failure in private message
+                except Exception as e:
+                    print(f"Failed to send message to user {user['_id']}: {e}")
             update.message.reply_text("Broadcast message sent!")
         else:
             update.message.reply_text("Please provide a message to broadcast.")
@@ -312,7 +319,6 @@ def handle_chat_member_update(update: Update, context: CallbackContext):
 # Main function to start the bot
 def main():
     updater = Updater(BOT_TOKEN, use_context=True)
-
     dp = updater.dispatcher
 
     # Add handlers for the commands and media/sticker messages
