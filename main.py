@@ -64,7 +64,7 @@ def start(update: Update, context: CallbackContext) -> None:
         "Admins can authorize users to edit messages, and the bot will delete edited messages "
         "from unauthorized users immediately. Use /help to see available commands."
     )
-
+    
 # Command to authorize users to edit messages
 def auth(update: Update, context: CallbackContext) -> None:
     if update.effective_chat.type not in ['group', 'supergroup']:
@@ -134,7 +134,7 @@ def unauth(update: Update, context: CallbackContext) -> None:
         update.message.reply_text(f"{target_user.mention_html()} is now unauthorized for this chat.", parse_mode=ParseMode.HTML)
     else:
         update.message.reply_text("User is not authorized or does not exist.")
-
+        
 # Command to list authorized users
 def authusers(update: Update, context: CallbackContext) -> None:
     if update.effective_chat.type not in ['group', 'supergroup']:
