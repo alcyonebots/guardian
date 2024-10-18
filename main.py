@@ -26,7 +26,7 @@ db = client['telegram_bot']
 auth_collection = db['authorized_users']
 
 # In-memory storage for group auth and delay settings
-group_auth = {}
+authorized_users = {}  # Authorized users for each chat
 group_delay = {}  # Dictionary to store delay settings per group
 
 DEFAULT_DELAY = 1800  # Default delay in seconds (30 minutes)
@@ -41,7 +41,7 @@ def get_user_from_username(context: CallbackContext, chat_id: int, username: str
     except BadRequest as e:
         logger.warning(f"Failed to retrieve user {username}: {e}")
         return None
-        
+
 # Check if user is an admin in the current chat
 def is_admin(user_id: int, chat_id: int, context: CallbackContext) -> bool:
     admins = context.bot.get_chat_administrators(chat_id)
@@ -68,6 +68,10 @@ def auth(update: Update, context: CallbackContext):
     if not context.args and not update.message.reply_to_message:
         update.message.reply_text("Please specify a user by username or ID, or reply to a user to authorize.")
         return
+
+    # Initialize the chat in authorized_users if it doesn't exist
+    if chat_id not in authorized_users:
+        authorized_users[chat_id] = set()
 
     if context.args:  # User authorization by username or ID
         identifier = context.args[0]
@@ -100,13 +104,16 @@ def auth(update: Update, context: CallbackContext):
     authorized_users[chat_id].add(member.user.id)
     update.message.reply_text(f"{user_mention} is now authorized for this chat.", parse_mode=ParseMode.HTML)
 
-
+# Command to unauthorize users from editing messages
 def unauth(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
 
     if not context.args and not update.message.reply_to_message:
         update.message.reply_text("Please specify a user by username or ID, or reply to a user to unauthorize.")
         return
+
+    if chat_id not in authorized_users:
+        authorized_users[chat_id] = set()
 
     if context.args:  # User unauthorization by username or ID
         identifier = context.args[0]
@@ -136,7 +143,6 @@ def unauth(update: Update, context: CallbackContext):
     # Unauthorize the user
     authorized_users[chat_id].remove(member.user.id)
     update.message.reply_text(f"{user_mention} is no longer authorized for this chat.", parse_mode=ParseMode.HTML)
-                
 
 # Command to list authorized users
 def authusers(update: Update, context: CallbackContext) -> None:
