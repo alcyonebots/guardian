@@ -155,28 +155,26 @@ def authusers(update: Update, context: CallbackContext) -> None:
     else:
         update.message.reply_text("No authorized users.")
         
-# Function to handle message edits
+# Handler for message edits
 def message_edit(update: Update, context: CallbackContext) -> None:
     if update.effective_chat.type not in ['group', 'supergroup']:
         return
     
-    # For edited messages, we should access 'update.edited_message'
+    # Access the edited message
     edited_message = update.edited_message
     user_id = edited_message.from_user.id
+    chat_id = update.effective_chat.id
 
-    if user_id in authorized_users.get(update.effective_chat.id, set()) or \
-       user_id == OWNER_ID or \
-       is_admin(user_id, update.effective_chat.id, context):
+    # Check if the user is authorized to edit messages
+    if user_id in [OWNER_ID] or is_admin(user_id, chat_id, context) or \
+       (chat_id in authorized_users and edited_message.from_user.username in authorized_users[chat_id]):
         return  # Authorized user, owner, or admin, do nothing
 
     try:
-        # Delete the edited message
-        context.bot.delete_message(chat_id=update.effective_chat.id, message_id=edited_message.message_id)
-        
-        # Send confirmation message
-        confirmation_message = context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=f"{edited_message.from_user.mention_html()} just edited a message and I deleted it.",
+        context.bot.delete_message(chat_id=chat_id, message_id=edited_message.message_id)
+        context.bot.send_message(
+            chat_id=chat_id,
+            text=f"{edited_message.from_user.mention_html()} just edited a message, and I deleted it.",
             parse_mode=ParseMode.HTML
         )
         
