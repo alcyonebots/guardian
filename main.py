@@ -98,10 +98,10 @@ def auth(update: Update, context: CallbackContext) -> None:
 
     # Check if the user is already authorized
     if username in authorized_users.get(chat_id, set()):
-        message.reply_text(f"{username} is already authorized.")
+        message.reply_text(f"@{username} is already authorized.")
     else:
         authorized_users.setdefault(chat_id, set()).add(username)
-        message.reply_text(f"{username} has been authorized.")
+        message.reply_text(f"@{username} has been authorized.")
 
 # Function to unauthorize a user by username or user ID
 def unauth(update: Update, context: CallbackContext) -> None:
@@ -134,9 +134,9 @@ def unauth(update: Update, context: CallbackContext) -> None:
     # Check if the user is authorized
     if username in authorized_users.get(chat_id, set()):
         authorized_users[chat_id].remove(username)
-        message.reply_text(f"{username} has been unauthorized.")
+        message.reply_text(f"@{username} has been unauthorized.")
     else:
-        message.reply_text(f"{username} is not authorized.")
+        message.reply_text(f"@{username} is not authorized.")
         
 # Command to list authorized users
 def authusers(update: Update, context: CallbackContext) -> None:
@@ -172,8 +172,8 @@ def message_edit(update: Update, context: CallbackContext) -> None:
 
     try:
         context.bot.delete_message(chat_id=chat_id, message_id=edited_message.message_id)
-        context.bot.send_message(
-            chat_id=chat_id,
+        confirmation_message = context.bot.send_message(
+            chat_id=update.effective_chat.id,
             text=f"{edited_message.from_user.mention_html()} just edited a message, and I deleted it.",
             parse_mode=ParseMode.HTML
         )
