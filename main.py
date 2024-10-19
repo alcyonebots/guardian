@@ -75,41 +75,35 @@ def auth(update: Update, context: CallbackContext) -> None:
 
     # Check if command is issued as a reply
     if update.message.reply_to_message:
+        username = update.message.reply_to_message.from_user.username
         user_id = update.message.reply_to_message.from_user.id
-        first_name = update.message.reply_to_message.from_user.first_name
     elif args and args[0].startswith('@'):
         username = args[0][1:]  # Remove '@' from the username
         user_id = None  # No user_id from args
-        member = context.bot.get_chat_member(chat_id, username)
-        if member:
-            user_id = member.user.id
-            first_name = member.user.first_name
-        else:
-            message.reply_text("Invalid username.")
-            return
     elif args and args[0].isdigit():
         user_id = int(args[0])  # Parse user ID from args
+        username = None  # No username from args
+    else:
+        message.reply_text("Please provide a valid username (e.g., /auth @username) or reply to a user's message.")
+        return
+
+    # Determine the username based on the user ID if provided
+    if user_id:
         member = context.bot.get_chat_member(chat_id, user_id)
         if member:
-            first_name = member.user.first_name
+            username = member.user.username
         else:
             message.reply_text("Invalid user ID.")
             return
-    else:
-        message.reply_text("Please provide a valid username or user ID (e.g., /auth @username or /auth 123456789) or reply to a user's message.")
-        return
-
-    # Mention the user using their first name
-    user_mention = f'<a href="tg://user?id={user_id}">{first_name}</a>'
 
     # Check if the user is already authorized
-    if user_id in authorized_users.get(chat_id, set()):
-        message.reply_text(f"{user_mention} is already authorized.", parse_mode=ParseMode.HTML)
+    if username in authorized_users.get(chat_id, set()):
+        message.reply_text(f"{username} is already authorized.")
     else:
-        authorized_users.setdefault(chat_id, set()).add(user_id)
-        message.reply_text(f"{user_mention} has been authorized.", parse_mode=ParseMode.HTML)
-        
- # Function to unauthorize a user by username or user ID
+        authorized_users.setdefault(chat_id, set()).add(username)
+        message.reply_text(f"{username} has been authorized.")
+
+# Function to unauthorize a user by username or user ID
 def unauth(update: Update, context: CallbackContext) -> None:
     chat_id = update.effective_chat.id
     message = update.message
@@ -122,38 +116,27 @@ def unauth(update: Update, context: CallbackContext) -> None:
 
     # Check if command is issued as a reply
     if update.message.reply_to_message:
-        user_id = update.message.reply_to_message.from_user.id
-        first_name = update.message.reply_to_message.from_user.first_name
+        username = update.message.reply_to_message.from_user.username
     elif args and args[0].startswith('@'):
         username = args[0][1:]  # Remove '@' from the username
-        member = context.bot.get_chat_member(chat_id, username)
-        if member:
-            user_id = member.user.id
-            first_name = member.user.first_name
-        else:
-            message.reply_text("Invalid username.")
-            return
     elif args and args[0].isdigit():
         user_id = int(args[0])  # Parse user ID from args
         member = context.bot.get_chat_member(chat_id, user_id)
         if member:
-            first_name = member.user.first_name
+            username = member.user.username
         else:
             message.reply_text("Invalid user ID.")
             return
     else:
-        message.reply_text("Please provide a valid username or user ID (e.g., /unauth @username or /unauth 123456789) or reply to a user's message.")
+        message.reply_text("Please provide a valid username (e.g., /unauth @username) or reply to a user's message.")
         return
 
-    # Mention the user using their first name
-    user_mention = f'<a href="tg://user?id={user_id}">{first_name}</a>'
-
     # Check if the user is authorized
-    if user_id in authorized_users.get(chat_id, set()):
-        authorized_users[chat_id].remove(user_id)
-        message.reply_text(f"{user_mention} has been unauthorized.", parse_mode=ParseMode.HTML)
+    if username in authorized_users.get(chat_id, set()):
+        authorized_users[chat_id].remove(username)
+        message.reply_text(f"{username} has been unauthorized.")
     else:
-        message.reply_text(f"{user_mention} is not authorized.", parse_mode=ParseMode.HTML)
+        message.reply_text(f"{username} is not authorized.")
         
 # Command to list authorized users
 def authusers(update: Update, context: CallbackContext) -> None:
