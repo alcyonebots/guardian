@@ -193,33 +193,58 @@ def delete_message(context: CallbackContext, chat_id: int, message_id: int):
 
 # Command to broadcast a message to all groups and users who started the bot
 def broadcast(update: Update, context: CallbackContext) -> None:
+    # Check if the user is the owner
     if update.effective_user.id != OWNER_ID:
         update.message.reply_text("You are not authorized to use this command.")
         return
 
-    if not context.args:
-        update.message.reply_text("Usage: /broadcast <message>")
-        return
+    # Check if the command is a reply to a message (including a forwarded message)
+    if update.message.reply_to_message:
+        # Get the message that is being replied to (which we want to forward)
+        forwarded_message = update.message.reply_to_message
 
-    message = ' '.join(context.args)
+        # Forward the message to all groups in group_auth
+        for chat_id in group_auth.keys():
+            try:
+                context.bot.forward_message(chat_id=chat_id, from_chat_id=forwarded_message.chat.id, message_id=forwarded_message.message_id)
+            except Exception as e:
+                logger.warning(f"Failed to forward message to group {chat_id}: {e}")
 
-    # Send to all groups
-    for chat_id in group_auth.keys():
-        try:
-            context.bot.send_message(chat_id=chat_id, text=message)
-        except Exception as e:
-            logger.warning(f"Failed to send message to group {chat_id}: {e}")
+        # Forward the message to all users who started the bot
+        users = auth_collection.find({"is_started": True})  # Modify this if necessary
+        for user in users:
+            try:
+                context.bot.forward_message(chat_id=user['user_id'], from_chat_id=forwarded_message.chat.id, message_id=forwarded_message.message_id)
+            except Exception as e:
+                logger.warning(f"Failed to forward message to user {user['user_id']}: {e}")
 
-    # Send to all users who started the bot
-    users = auth_collection.find({"is_started": True})  # Modify this as necessary
-    for user in users:
-        try:
-            context.bot.send_message(chat_id=user['user_id'], text=message)
-        except Exception as e:
-            logger.warning(f"Failed to send message to user {user['user_id']}: {e}")
+        update.message.reply_text("Broadcast message forwarded.")
 
-    update.message.reply_text("Broadcast message sent.")
+    else:
+        # If the command is not a reply, treat it as a normal text broadcast
+        if not context.args:
+            update.message.reply_text("Usage: Reply to a message to forward it, or use /broadcast <message> to send a custom message.")
+            return
 
+        message = ' '.join(context.args)
+
+        # Send the message to all groups
+        for chat_id in group_auth.keys():
+            try:
+                context.bot.send_message(chat_id=chat_id, text=message)
+            except Exception as e:
+                logger.warning(f"Failed to send message to group {chat_id}: {e}")
+
+        # Send the message to all users who started the bot
+        users = auth_collection.find({"is_started": True})  # Modify this if necessary
+        for user in users:
+            try:
+                context.bot.send_message(chat_id=user['user_id'], text=message)
+            except Exception as e:
+                logger.warning(f"Failed to send message to user {user['user_id']}: {e}")
+
+        update.message.reply_text("Broadcast message sent.")
+        
 # Command to set deletion delay
 def setdelay(update: Update, context: CallbackContext) -> None:
     if update.effective_chat.type not in ['group', 'supergroup']:
