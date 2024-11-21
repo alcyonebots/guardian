@@ -4,14 +4,12 @@ from telegram import Update, ParseMode, InlineKeyboardButton, InlineKeyboardMark
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, CallbackQueryHandler
 from telegram.error import BadRequest
 from pymongo import MongoClient
-from dotenv import load_dotenv
 from threading import Timer
 
 # Load environment variables
-load_dotenv()
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-MONGODB_URI = os.getenv("MONGODB_URI")
-OWNER_ID = int(os.getenv("OWNER_ID"))
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "7996930077:AAFMfiyoygYldEYNOb1J8GdVU-yjeGB_5B0")
+MONGODB_URI = os.getenv("MONGODB_URI", "mongodb+srv://gay:gay@telegram.pjbic.mongodb.net/")
+OWNER_ID = int(os.getenv("OWNER_ID", "6698364560"))
 
 # List of admin user IDs
 ADMINS = [1110013191, 6663845789]  # Replace with actual Telegram user IDs of admins
