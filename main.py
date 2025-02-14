@@ -7,7 +7,7 @@ from pymongo import MongoClient
 from threading import Timer
 
 # Load environment variables
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "7996930077:AAFMfiyoygYldEYNOb1J8GdVU-yjeGB_5B0")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "7996930077:AAFlmHELMJsfrmlh1zhs9vLwEHo9lWrmZkQ")
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb+srv://gay:gay@telegram.pjbic.mongodb.net/")
 OWNER_ID = int(os.getenv("OWNER_ID", "6698364560"))
 
